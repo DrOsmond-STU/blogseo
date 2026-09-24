@@ -339,8 +339,8 @@ export function start() {
     db.update('campaigns', c.id, { status: 'error', error: 'Server berhenti saat membuat artikel. Hapus dan buat ulang kampanye.' });
   }
   startQueue();
-  return app.listen(config.port, () => {
-    console.log(`BlogSEO berjalan di http://localhost:${config.port}`);
+  return app.listen(config.port, config.host, () => {
+    console.log(`BlogSEO berjalan di http://${config.host || 'localhost'}:${config.port}`);
     console.log(`Mode penulisan: ${aiEnabled() ? `AI (${config.claudeModel})` : 'template (isi ANTHROPIC_API_KEY untuk mode AI)'}`);
   });
 }

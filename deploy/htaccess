@@ -1,0 +1,34 @@
+# ============================================================================
+#  BlogSEO Engine — salin sebagai .htaccess di document root subdomain.
+#
+#  Aplikasi berjalan sebagai proses Node.js di 127.0.0.1:3761 (lihat
+#  deploy/blogseo-runner.sh). Document root sengaja kosong: kode, .env, dan
+#  database berada di ~/blogseo-app dan ~/blogseo-data, di luar jangkauan HTTP.
+# ============================================================================
+DirectoryIndex disabled
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  # Verifikasi AutoSSL dilayani Apache langsung.
+  RewriteRule ^\.well-known/ - [L]
+
+  RewriteCond %{REQUEST_URI} !^/\.well-known/ [NC]
+  RewriteRule .* http://127.0.0.1:3761%{REQUEST_URI} [P,QSA,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  RequestHeader set X-Forwarded-Proto "https" env=HTTPS
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+<IfModule pagespeed_module>
+  ModPagespeed off
+</IfModule>

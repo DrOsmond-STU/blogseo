@@ -7,6 +7,8 @@ const dataDir = path.resolve(process.env.DATA_DIR || './data');
 
 export const config = {
   port: Number(process.env.PORT || 3000),
+  // Isi 127.0.0.1 jika aplikasi berada di balik reverse proxy (Apache/Nginx).
+  host: process.env.HOST || undefined,
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
   adminPassword: process.env.ADMIN_PASSWORD || '',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
