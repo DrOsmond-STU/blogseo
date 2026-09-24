@@ -3,7 +3,8 @@
 #  BlogSEO Engine — penjaga proses untuk shared hosting cPanel (tanpa Passenger).
 #
 #  Dipanggil cron setiap beberapa menit:
-#    /usr/bin/flock -n ~/.blogseo-runner.lock /bin/bash ~/blogseo-runner.sh
+#    /usr/bin/flock -n -o ~/.blogseo-runner2.lock /bin/bash ~/blogseo-runner.sh
+#  (-o wajib: tanpa itu proses node mewarisi kunci dan cron berikutnya selalu ditolak)
 #
 #  1. Memasang dependensi bila belum ada atau package-lock.json berubah.
 #  2. Menyalakan ulang aplikasi bila kode berubah (setelah Git Deploy).
