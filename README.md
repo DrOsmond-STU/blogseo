@@ -19,16 +19,19 @@ cp .env.example .env    # lalu isi nilainya
 npm start               # buka http://localhost:3000
 ```
 
-### Isi `.env`
+### Pengaturan dari dashboard
+
+API key Claude, model, Client ID/Secret Google untuk Blogger, serta username & password login bisa diatur dari menu **Pengaturan** di dashboard, tanpa mengedit `.env` dan tanpa restart. Nilainya disimpan di `DATA_DIR/settings.json` (izin 0600); password disimpan sebagai hash scrypt. Menu ini juga berisi panduan langkah demi langkah membuat OAuth client Google beserta Redirect URI yang harus didaftarkan.
+
+### Isi `.env` (hanya pengaturan server)
 
 | Variabel | Keterangan |
 |---|---|
-| `ANTHROPIC_API_KEY` | Kunci API Claude (console.anthropic.com). Jika kosong, engine memakai mode template yang lebih sederhana. |
-| `CLAUDE_MODEL` | Default `claude-opus-5`. |
-| `ADMIN_USER` / `ADMIN_PASSWORD` | Login dashboard (default username `admin`). Password **wajib** diisi jika server bisa diakses dari internet. |
 | `PUBLIC_BASE_URL` | URL publik aplikasi, dipakai untuk callback Google dan URL gambar yang di-upload. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Untuk posting ke Blogger (lihat di bawah). |
-| `DATA_DIR` | Lokasi database JSON & gambar upload (default `./data`). |
+| `HOST` / `PORT` | Alamat & port yang didengarkan. Isi `HOST=127.0.0.1` di balik reverse proxy. |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | Login awal dashboard. Setelah password diganti dari Pengaturan, nilai ini tidak dipakai lagi. |
+| `DATA_DIR` | Lokasi database JSON, pengaturan, & gambar upload (default `./data`). |
+| `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Opsional, cadangan jika tidak diisi dari menu Pengaturan. |
 
 ## Menghubungkan situs tujuan
 

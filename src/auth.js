@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import { authEnabled, passwordFingerprint, verifyPassword } from './settings.js';
 
 const COOKIE = 'blogseo_session';
 const SESSION_DAYS = 30;
@@ -12,8 +13,8 @@ const MAX_FAILS = 10;
 const FAIL_WINDOW_MS = 15 * 60 * 1000;
 
 // Kunci penanda tangan disimpan di DATA_DIR agar sesi tetap valid setelah restart.
-// Ikut diturunkan dari password, jadi mengganti ADMIN_PASSWORD otomatis mengeluarkan semua sesi.
-function signingKey() {
+// Ikut diturunkan dari password, jadi mengganti password otomatis mengeluarkan semua sesi.
+function signingSecret() {
   const file = path.join(config.dataDir, 'session.key');
   let secret;
   try {
@@ -23,11 +24,15 @@ function signingKey() {
     fs.mkdirSync(config.dataDir, { recursive: true });
     fs.writeFileSync(file, secret, { mode: 0o600 });
   }
-  return crypto.createHash('sha256').update(`${secret}:${config.adminPassword}`).digest();
+  return secret;
 }
 
-let key = null;
-const sign = (value) => crypto.createHmac('sha256', (key ||= signingKey())).update(value).digest('base64url');
+let secret = null;
+const sign = (value) => {
+  secret ||= signingSecret();
+  const key = crypto.createHash('sha256').update(`${secret}:${passwordFingerprint()}`).digest();
+  return crypto.createHmac('sha256', key).update(value).digest('base64url');
+};
 
 function safeEqual(a, b) {
   const x = Buffer.from(String(a));
@@ -54,7 +59,7 @@ export function isLoggedIn(req) {
   return Number(expires) > Date.now() && safeEqual(mac, sign(`${config.adminUser}:${expires}`));
 }
 
-function setSession(req, res) {
+export function setSession(req, res) {
   const expires = Date.now() + SESSION_DAYS * 86400_000;
   const value = `${expires}.${sign(`${config.adminUser}:${expires}`)}`;
   res.append(
@@ -70,7 +75,7 @@ function clientIp(req) {
 
 export function checkCredentials(username, password) {
   const userOk = safeEqual(String(username || '').trim().toLowerCase(), config.adminUser.toLowerCase());
-  const passOk = safeEqual(password || '', config.adminPassword);
+  const passOk = verifyPassword(password);
   return userOk && passOk;
 }
 
@@ -97,7 +102,7 @@ export function logoutHandler(req, res) {
 
 // Semua rute selain halaman login wajib sesi. API membalas 401 JSON, halaman dialihkan ke /login.
 export function requireLogin(req, res, next) {
-  if (!config.adminPassword || isLoggedIn(req)) return next();
+  if (!authEnabled() || isLoggedIn(req)) return next();
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Sesi berakhir. Silakan login lagi.' });
   res.redirect('/login');
 }

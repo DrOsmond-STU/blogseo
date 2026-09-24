@@ -84,7 +84,7 @@ function route() {
   const [name, id] = (page || 'new').split('/');
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === name || (name === 'campaign' && a.dataset.nav === 'campaigns')));
   const params = new URLSearchParams(query);
-  const pages = { new: renderNew, campaigns: renderCampaigns, campaign: () => renderCampaign(id), sites: () => renderSites(params), help: renderHelp };
+  const pages = { new: renderNew, campaigns: renderCampaigns, campaign: () => renderCampaign(id), sites: () => renderSites(params), settings: () => renderSettings(params), help: renderHelp };
   (pages[name] || renderNew)().catch((err) => {
     view.innerHTML = `<div class="notice">${esc(err.message)}</div>`;
   });
@@ -96,7 +96,7 @@ async function renderNew() {
   view.innerHTML = `
     <h1>Kampanye baru</h1>
     <p class="sub">Isi kata kunci, deskripsi singkat, gambar, dan URL situs utama. Engine akan menulis artikel dengan narasi berbeda untuk setiap blog tujuan, lalu Anda review sebelum terbit.</p>
-    ${status.ai ? '' : '<div class="notice">Mode template aktif (tanpa AI). Artikel akan lebih sederhana dan sebaiknya diedit. Isi <code>ANTHROPIC_API_KEY</code> di <code>.env</code> untuk artikel yang ditulis AI.</div>'}
+    ${status.ai ? '' : '<div class="notice">Mode template aktif (tanpa AI). Artikel akan lebih sederhana dan sebaiknya diedit. <a href="#settings">Isi API key Claude di Pengaturan</a> agar artikel ditulis AI.</div>'}
     ${sites.length ? '' : '<div class="notice info">Belum ada situs tujuan. <a href="#sites">Tambahkan blog Blogger / WordPress / webhook</a> terlebih dulu.</div>'}
     <form id="new-form" class="card">
       <div class="grid">
@@ -364,7 +364,7 @@ async function renderSites(params) {
           </label>
           <div class="actions"><button type="button" id="load-blogs">Tampilkan blog</button><button type="button" class="danger small" id="del-account">Putuskan akun</button></div>
           <div id="blog-list" style="margin-top:12px"></div>` : ''}
-      ` : `<div class="notice">Isi <code>GOOGLE_CLIENT_ID</code> dan <code>GOOGLE_CLIENT_SECRET</code> di <code>.env</code> lalu restart server. Redirect URI yang harus didaftarkan di Google Cloud Console:<br /><code>${esc(status.redirectUri)}</code></div>`}
+      ` : `<div class="notice">Koneksi Google untuk Blogger belum diatur. <a href="#settings">Buka Pengaturan → Blogger</a> untuk mengisi Client ID & Client Secret (ada panduan langkah demi langkah).</div>`}
     </div>
     <form class="card" data-panel="wordpress" hidden id="wp-form">
       <div class="grid">
@@ -481,12 +481,150 @@ async function renderHelp() {
     </div>`;
 }
 
+// ---------- Pengaturan ----------
+const SOURCE_LABEL = { dashboard: 'disimpan dari dashboard', env: 'dari file .env' };
+
+function copyButton(text) {
+  return `<button type="button" class="small" data-copy="${esc(text)}">Salin</button>`;
+}
+
+async function renderSettings(params) {
+  const st = await api('/api/settings');
+  if (params.get('google') === 'missing') toast('Isi Client ID & Client Secret Google terlebih dulu', true);
+  const aiBadge = st.anthropic.configured ? badge(['Aktif', 'ok']) : badge(['Belum diisi: mode template', 'warn']);
+  const gBadge = st.google.clientId && st.google.secretConfigured ? badge(['Siap', 'ok']) : badge(['Belum diisi', 'warn']);
+  view.innerHTML = `
+    <h1>Pengaturan</h1>
+    <p class="sub">Semua pengaturan disimpan di server, dalam file yang hanya bisa dibaca akun hosting dan berada di luar folder publik. Perubahan langsung berlaku tanpa restart.</p>
+
+    <form class="card" id="ai-form">
+      <h2 style="margin-top:0">Penulis AI (Claude) ${aiBadge}</h2>
+      <p class="hint">Dengan API key, setiap artikel ditulis AI dengan narasi berbeda. Tanpa API key, engine memakai template sederhana.
+        Buat API key di <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API Keys</a>. Pemakaian API berbayar sesuai jumlah artikel.</p>
+      <label>API key
+        <input name="anthropicApiKey" type="password" autocomplete="off" placeholder="${st.anthropic.configured ? `${esc(st.anthropic.masked)} (kosongkan jika tidak diganti)` : 'sk-ant-…'}" />
+        ${st.anthropic.source ? `<small>Tersimpan: ${esc(st.anthropic.masked)} · ${SOURCE_LABEL[st.anthropic.source]}</small>` : ''}
+      </label>
+      <label>Model
+        <select name="claudeModel">${st.models.map((m) => `<option value="${m.id}" ${m.id === st.claudeModel ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
+      </label>
+      <div class="actions">
+        <button class="primary">Simpan</button>
+        <button type="button" id="test-ai" ${st.anthropic.configured ? '' : 'disabled'}>Tes API key</button>
+        ${st.anthropic.source === 'dashboard' ? '<button type="button" class="danger" id="clear-ai">Hapus API key</button>' : ''}
+      </div>
+    </form>
+
+    <form class="card" id="google-form">
+      <h2 style="margin-top:0">Blogger (Google OAuth) ${gBadge}</h2>
+      <p class="hint">Dibutuhkan agar engine bisa memposting ke blog Blogger Anda. Cukup dibuat sekali.</p>
+      <ol class="help">
+        <li>Buka <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> dan buat project baru (misalnya "BlogSEO").</li>
+        <li>Aktifkan <a href="https://console.cloud.google.com/apis/library/blogger.googleapis.com" target="_blank" rel="noopener">Blogger API v3</a> untuk project tersebut (klik <em>Enable</em>).</li>
+        <li>Buka <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">OAuth consent screen</a>: pilih <em>External</em>, isi nama aplikasi & email, lalu di bagian <em>Test users</em> tambahkan email Google pemilik blog.</li>
+        <li>Buka <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <em>Create credentials</em> → <em>OAuth client ID</em> → tipe <em>Web application</em>.</li>
+        <li>Di <em>Authorized JavaScript origins</em> isi:<br /><code>${esc(st.publicBaseUrl)}</code> ${copyButton(st.publicBaseUrl)}</li>
+        <li>Di <em>Authorized redirect URIs</em> isi:<br /><code>${esc(st.redirectUri)}</code> ${copyButton(st.redirectUri)}</li>
+        <li>Klik <em>Create</em>, lalu salin <strong>Client ID</strong> dan <strong>Client Secret</strong> ke kolom di bawah.</li>
+      </ol>
+      <label>Client ID
+        <input name="googleClientId" value="${esc(st.google.clientId)}" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off" />
+      </label>
+      <label>Client Secret
+        <input name="googleClientSecret" type="password" autocomplete="off" placeholder="${st.google.secretConfigured ? `${esc(st.google.secretMasked)} (kosongkan jika tidak diganti)` : 'GOCSPX-…'}" />
+      </label>
+      <div class="actions">
+        <button class="primary">Simpan</button>
+        ${st.google.clientId && st.google.secretConfigured ? '<a href="#sites"><button type="button">Hubungkan akun Google →</button></a>' : ''}
+        ${st.google.clientIdSource === 'dashboard' ? '<button type="button" class="danger" id="clear-google">Hapus</button>' : ''}
+      </div>
+    </form>
+
+    <form class="card" id="login-form">
+      <h2 style="margin-top:0">Login dashboard</h2>
+      <p class="hint">Setelah diganti, perangkat lain yang sedang login harus login ulang.</p>
+      <div class="grid">
+        <label>Username<input name="newUsername" value="${esc(st.adminUser)}" autocomplete="username" /></label>
+        <label>Password lama<input name="currentPassword" type="password" autocomplete="current-password" ${st.authEnabled ? 'required' : ''} /></label>
+        <label>Password baru <small>Minimal 10 karakter. Kosongkan jika hanya mengganti username.</small><input name="newPassword" type="password" autocomplete="new-password" /></label>
+        <label>Ulangi password baru<input name="confirmPassword" type="password" autocomplete="new-password" /></label>
+      </div>
+      <div class="actions"><button class="primary">Simpan login</button></div>
+    </form>`;
+
+  const reload = async () => {
+    await refreshStatus();
+    renderSettings(new URLSearchParams());
+  };
+  view.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(b.dataset.copy);
+      toast('Disalin');
+    } catch {
+      toast('Tidak bisa menyalin otomatis. Blok teksnya lalu salin manual.', true);
+    }
+  }));
+
+  const aiForm = document.getElementById('ai-form');
+  aiForm.onsubmit = (e) => {
+    e.preventDefault();
+    withBusy(aiForm.querySelector('button.primary'), async () => {
+      const f = aiForm.elements;
+      await api('/api/settings', { method: 'PUT', body: { anthropicApiKey: f.anthropicApiKey.value, claudeModel: f.claudeModel.value } });
+      toast('Pengaturan AI disimpan');
+      await reload();
+    });
+  };
+  document.getElementById('test-ai')?.addEventListener('click', (e) => withBusy(e.target, async () => {
+    toast((await api('/api/settings/test-ai', { method: 'POST' })).message);
+  }));
+  document.getElementById('clear-ai')?.addEventListener('click', async () => {
+    if (!confirm('Hapus API key Claude? Engine akan kembali ke mode template.')) return;
+    await api('/api/settings', { method: 'PUT', body: { clear: ['anthropicApiKey'] } });
+    toast('API key dihapus');
+    reload();
+  });
+
+  const gForm = document.getElementById('google-form');
+  gForm.onsubmit = (e) => {
+    e.preventDefault();
+    withBusy(gForm.querySelector('button.primary'), async () => {
+      const f = gForm.elements;
+      await api('/api/settings', { method: 'PUT', body: { googleClientId: f.googleClientId.value, googleClientSecret: f.googleClientSecret.value } });
+      toast('Pengaturan Google disimpan');
+      await reload();
+    });
+  };
+  document.getElementById('clear-google')?.addEventListener('click', async () => {
+    if (!confirm('Hapus Client ID & Secret Google? Posting ke Blogger akan berhenti.')) return;
+    await api('/api/settings', { method: 'PUT', body: { clear: ['googleClientId', 'googleClientSecret'] } });
+    toast('Pengaturan Google dihapus');
+    reload();
+  });
+
+  const lForm = document.getElementById('login-form');
+  lForm.onsubmit = (e) => {
+    e.preventDefault();
+    withBusy(lForm.querySelector('button.primary'), async () => {
+      const body = Object.fromEntries(new FormData(lForm));
+      if (body.newUsername === st.adminUser) delete body.newUsername;
+      const r = await api('/api/settings/password', { method: 'POST', body });
+      toast(r.message);
+      await reload();
+    });
+  };
+}
+
 // ---------- init ----------
-(async () => {
+async function refreshStatus() {
   status = await api('/api/status');
   document.getElementById('mode').innerHTML =
-    (status.ai ? `Penulis: <strong>AI</strong> (${esc(status.model)})` : 'Penulis: <strong>template</strong> (tanpa AI)') +
+    (status.ai ? `Penulis: <strong>AI</strong> (${esc(status.model)})` : 'Penulis: <a href="#settings"><strong>template</strong> (tanpa AI)</a>') +
     (status.user ? ` · ${esc(status.user)} · <a href="/logout">Keluar</a>` : '');
+}
+
+(async () => {
+  await refreshStatus();
   window.addEventListener('hashchange', route);
   route();
 })();

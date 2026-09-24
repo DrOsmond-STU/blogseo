@@ -14,7 +14,12 @@ import { assignAngles, ANGLES } from './generator/angles.js';
 import { planAnchors } from './generator/anchors.js';
 import { maxSimilarities } from './generator/similarity.js';
 import { schedulePosts, publishPost, startQueue } from './queue.js';
-import { isLoggedIn, loginHandler, logoutHandler, requireLogin } from './auth.js';
+import { isLoggedIn, loginHandler, logoutHandler, requireLogin, setSession } from './auth.js';
+import { applySettings, updateSettings, sourceOf, maskSecret, authEnabled, verifyPassword, setPassword, MODELS } from './settings.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { getClient } from './generator/ai.js';
+
+applySettings();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 fs.mkdirSync(config.uploadDir, { recursive: true });
@@ -35,8 +40,8 @@ app.get('/login', (req, res) => (isLoggedIn(req) ? res.redirect('/') : res.sendF
 app.post('/login', loginHandler);
 app.get('/logout', logoutHandler);
 app.get('/style.css', (req, res) => res.sendFile(path.join(publicDir, 'style.css')));
-if (!config.adminPassword) {
-  console.warn('[peringatan] ADMIN_PASSWORD kosong: dashboard terbuka tanpa login. Jangan jalankan di server publik.');
+if (!authEnabled()) {
+  console.warn('[peringatan] Password admin belum diatur: dashboard terbuka tanpa login. Atur di menu Pengaturan.');
 }
 app.use(requireLogin);
 
@@ -78,7 +83,7 @@ function publicSite(site) {
 // ---- Status ----
 app.get('/api/status', (req, res) => {
   res.json({
-    user: config.adminPassword ? config.adminUser : null,
+    user: authEnabled() ? config.adminUser : null,
     ai: aiEnabled(),
     model: aiEnabled() ? config.claudeModel : null,
     google: googleEnabled(),
@@ -89,9 +94,98 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// ---- Pengaturan (diisi dari dashboard, tanpa edit .env) ----
+function settingsView() {
+  return {
+    anthropic: {
+      configured: Boolean(config.anthropicApiKey),
+      masked: maskSecret(config.anthropicApiKey),
+      source: sourceOf('anthropicApiKey'),
+    },
+    claudeModel: config.claudeModel,
+    models: MODELS,
+    google: {
+      clientId: config.googleClientId,
+      clientIdSource: sourceOf('googleClientId'),
+      secretConfigured: Boolean(config.googleClientSecret),
+      secretMasked: maskSecret(config.googleClientSecret),
+    },
+    redirectUri: `${config.publicBaseUrl}/auth/google/callback`,
+    publicBaseUrl: config.publicBaseUrl,
+    adminUser: config.adminUser,
+    authEnabled: authEnabled(),
+  };
+}
+
+app.get('/api/settings', (req, res) => res.json(settingsView()));
+
+app.put('/api/settings', wrap(async (req, res) => {
+  const b = req.body || {};
+  const patch = {};
+  // Kolom rahasia yang dikirim kosong berarti "tidak diubah"; hapus dengan tombol Hapus (clear).
+  if (typeof b.anthropicApiKey === 'string' && b.anthropicApiKey.trim()) {
+    const key = b.anthropicApiKey.trim();
+    if (!/^sk-ant-/.test(key)) throw badRequest('API key Claude biasanya diawali "sk-ant-". Periksa kembali.');
+    patch.anthropicApiKey = key;
+  }
+  if (b.claudeModel !== undefined) {
+    if (!MODELS.some((m) => m.id === b.claudeModel)) throw badRequest('Model tidak dikenal');
+    patch.claudeModel = b.claudeModel;
+  }
+  if (typeof b.googleClientId === 'string') {
+    const id = b.googleClientId.trim();
+    if (id && !/\.apps\.googleusercontent\.com$/.test(id)) {
+      throw badRequest('Client ID Google biasanya diakhiri ".apps.googleusercontent.com". Periksa kembali.');
+    }
+    patch.googleClientId = id || null;
+  }
+  if (typeof b.googleClientSecret === 'string' && b.googleClientSecret.trim()) {
+    patch.googleClientSecret = b.googleClientSecret.trim();
+  }
+  for (const key of b.clear || []) {
+    if (['anthropicApiKey', 'googleClientId', 'googleClientSecret'].includes(key)) patch[key] = null;
+  }
+  updateSettings(patch);
+  res.json(settingsView());
+}));
+
+app.post('/api/settings/test-ai', wrap(async (req, res) => {
+  if (!config.anthropicApiKey) throw badRequest('API key Claude belum diisi');
+  try {
+    const model = await getClient().models.retrieve(config.claudeModel);
+    res.json({ message: `API key valid. Model ${model.display_name || model.id} siap dipakai.` });
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) throw badRequest('API key tidak valid atau sudah dicabut.');
+    if (err instanceof Anthropic.PermissionDeniedError) throw badRequest('API key tidak punya izin untuk model ini.');
+    if (err instanceof Anthropic.NotFoundError) throw badRequest(`Model ${config.claudeModel} tidak tersedia untuk akun ini. Coba pilih model lain.`);
+    if (err instanceof Anthropic.APIConnectionError) throw badRequest('Server tidak bisa menghubungi api.anthropic.com. Coba lagi nanti.');
+    throw err;
+  }
+}));
+
+app.post('/api/settings/password', wrap(async (req, res) => {
+  const { currentPassword, newUsername, newPassword, confirmPassword } = req.body || {};
+  if (authEnabled() && !verifyPassword(currentPassword)) throw badRequest('Password lama salah');
+  const username = String(newUsername || '').trim();
+  if (username && !/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
+    throw badRequest('Username 3–32 karakter: huruf, angka, titik, garis bawah, atau tanda minus');
+  }
+  if (newPassword) {
+    if (String(newPassword).length < 10) throw badRequest('Password baru minimal 10 karakter');
+    if (newPassword !== confirmPassword) throw badRequest('Konfirmasi password tidak sama');
+  }
+  if (!newPassword && !username) throw badRequest('Tidak ada yang diubah');
+  if (!newPassword && !authEnabled()) throw badRequest('Isi password baru');
+  if (username) updateSettings({ adminUser: username });
+  if (newPassword) setPassword(String(newPassword));
+  // Semua sesi lama otomatis tidak berlaku; sesi browser ini diperbarui agar tetap login.
+  setSession(req, res);
+  res.json({ message: 'Login diperbarui. Perangkat lain perlu login ulang.', adminUser: config.adminUser });
+}));
+
 // ---- Google / Blogger ----
 app.get('/auth/google', (req, res) => {
-  if (!googleEnabled()) return res.status(400).send('GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET belum diisi di .env');
+  if (!googleEnabled()) return res.redirect('/#settings?google=missing');
   res.redirect(buildAuthUrl());
 });
 
@@ -346,7 +440,7 @@ export function start() {
   startQueue();
   return app.listen(config.port, config.host, () => {
     console.log(`BlogSEO berjalan di http://${config.host || 'localhost'}:${config.port}`);
-    console.log(`Mode penulisan: ${aiEnabled() ? `AI (${config.claudeModel})` : 'template (isi ANTHROPIC_API_KEY untuk mode AI)'}`);
+    console.log(`Mode penulisan: ${aiEnabled() ? `AI (${config.claudeModel})` : 'template (isi API key Claude di menu Pengaturan)'}`);
   });
 }
 

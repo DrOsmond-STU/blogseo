@@ -4,10 +4,18 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 
 let client = null;
-function getClient() {
-  if (!client) client = new Anthropic({ apiKey: config.anthropicApiKey });
+let clientKey = null;
+// Klien dibuat ulang jika API key diganti dari halaman Pengaturan.
+export function getClient() {
+  if (!client || clientKey !== config.anthropicApiKey) {
+    client = new Anthropic({ apiKey: config.anthropicApiKey });
+    clientKey = config.anthropicApiKey;
+  }
   return client;
 }
+
+// Model yang mendukung parameter fallbacks sisi server.
+const FALLBACK_MODELS = new Set(['claude-opus-5']);
 
 const ARTICLE_SCHEMA = {
   type: 'object',
@@ -53,8 +61,7 @@ export async function generateWithAI(input) {
     max_tokens: 16000,
     // Jika model menolak permintaan (safety classifier), server otomatis
     // mencoba ulang dengan model cadangan yang direkomendasikan.
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
+    ...(FALLBACK_MODELS.has(config.claudeModel) ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } : {}),
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: buildUserPrompt(input) }],
     output_config: { format: { type: 'json_schema', schema: ARTICLE_SCHEMA } },
