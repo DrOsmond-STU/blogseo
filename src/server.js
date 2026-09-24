@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
-import { config, aiEnabled, googleEnabled } from './config.js';
+import { config, aiEnabled, aiProvider, aiModel, googleEnabled } from './config.js';
 import { db } from './db.js';
 import { buildAuthUrl, consumeState, exchangeCode } from './google.js';
 import { listBlogs } from './publishers/blogger.js';
@@ -15,7 +15,8 @@ import { planAnchors } from './generator/anchors.js';
 import { maxSimilarities } from './generator/similarity.js';
 import { schedulePosts, publishPost, startQueue } from './queue.js';
 import { isLoggedIn, loginHandler, logoutHandler, requireLogin, setSession } from './auth.js';
-import { applySettings, updateSettings, sourceOf, maskSecret, authEnabled, verifyPassword, setPassword, MODELS } from './settings.js';
+import { applySettings, updateSettings, sourceOf, maskSecret, authEnabled, verifyPassword, setPassword, MODELS, PROVIDERS } from './settings.js';
+import { listGeminiModels, GeminiError } from './generator/gemini.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { getClient } from './generator/ai.js';
 
@@ -85,7 +86,8 @@ app.get('/api/status', (req, res) => {
   res.json({
     user: authEnabled() ? config.adminUser : null,
     ai: aiEnabled(),
-    model: aiEnabled() ? config.claudeModel : null,
+    provider: aiProvider(),
+    model: aiModel(),
     google: googleEnabled(),
     publicBaseUrl: config.publicBaseUrl,
     redirectUri: `${config.publicBaseUrl}/auth/google/callback`,
@@ -97,6 +99,14 @@ app.get('/api/status', (req, res) => {
 // ---- Pengaturan (diisi dari dashboard, tanpa edit .env) ----
 function settingsView() {
   return {
+    aiProvider: config.aiProvider || (config.anthropicApiKey && !config.geminiApiKey ? 'claude' : 'gemini'),
+    activeProvider: aiProvider(),
+    gemini: {
+      configured: Boolean(config.geminiApiKey),
+      masked: maskSecret(config.geminiApiKey),
+      source: sourceOf('geminiApiKey'),
+      model: config.geminiModel,
+    },
     anthropic: {
       configured: Boolean(config.anthropicApiKey),
       masked: maskSecret(config.anthropicApiKey),
@@ -122,6 +132,19 @@ app.get('/api/settings', (req, res) => res.json(settingsView()));
 app.put('/api/settings', wrap(async (req, res) => {
   const b = req.body || {};
   const patch = {};
+  if (b.aiProvider !== undefined) {
+    if (!PROVIDERS.includes(b.aiProvider)) throw badRequest('Penyedia AI tidak dikenal');
+    patch.aiProvider = b.aiProvider;
+  }
+  if (typeof b.geminiApiKey === 'string' && b.geminiApiKey.trim()) {
+    const key = b.geminiApiKey.trim();
+    if (key.length < 20 || /\s/.test(key)) throw badRequest('API key Gemini tidak valid. Salin ulang dari Google AI Studio.');
+    patch.geminiApiKey = key;
+  }
+  if (typeof b.geminiModel === 'string' && b.geminiModel.trim()) {
+    if (!/^gemini-[a-z0-9.\-]+$/i.test(b.geminiModel.trim())) throw badRequest('Nama model Gemini tidak valid');
+    patch.geminiModel = b.geminiModel.trim();
+  }
   // Kolom rahasia yang dikirim kosong berarti "tidak diubah"; hapus dengan tombol Hapus (clear).
   if (typeof b.anthropicApiKey === 'string' && b.anthropicApiKey.trim()) {
     const key = b.anthropicApiKey.trim();
@@ -143,10 +166,28 @@ app.put('/api/settings', wrap(async (req, res) => {
     patch.googleClientSecret = b.googleClientSecret.trim();
   }
   for (const key of b.clear || []) {
-    if (['anthropicApiKey', 'googleClientId', 'googleClientSecret'].includes(key)) patch[key] = null;
+    if (['geminiApiKey', 'anthropicApiKey', 'googleClientId', 'googleClientSecret'].includes(key)) patch[key] = null;
   }
   updateSettings(patch);
   res.json(settingsView());
+}));
+
+app.post('/api/settings/test-gemini', wrap(async (req, res) => {
+  if (!config.geminiApiKey) throw badRequest('API key Gemini belum diisi');
+  try {
+    const models = await listGeminiModels();
+    if (!models.length) throw badRequest('API key valid, tetapi tidak ada model Gemini yang tersedia untuk akun ini.');
+    // Jika model tersimpan tidak ada di daftar, pilih model flash terbaru (tersedia di paket gratis).
+    if (!models.some((m) => m.id === config.geminiModel)) {
+      const pick = models.find((m) => /flash/.test(m.id) && !/lite|preview|exp/.test(m.id)) || models[0];
+      updateSettings({ geminiModel: pick.id });
+    }
+    res.json({ message: `API key Gemini valid. Model aktif: ${config.geminiModel}.`, models, model: config.geminiModel });
+  } catch (err) {
+    if (err instanceof GeminiError) throw badRequest(err.message);
+    if (err.cause || err.name === 'TypeError') throw badRequest('Server tidak bisa menghubungi Google Gemini API. Coba lagi nanti.');
+    throw err;
+  }
 }));
 
 app.post('/api/settings/test-ai', wrap(async (req, res) => {
@@ -440,7 +481,7 @@ export function start() {
   startQueue();
   return app.listen(config.port, config.host, () => {
     console.log(`BlogSEO berjalan di http://${config.host || 'localhost'}:${config.port}`);
-    console.log(`Mode penulisan: ${aiEnabled() ? `AI (${config.claudeModel})` : 'template (isi API key Claude di menu Pengaturan)'}`);
+    console.log(`Mode penulisan: ${aiEnabled() ? `AI ${aiProvider()} (${aiModel()})` : 'template (isi API key Gemini/Claude di menu Pengaturan)'}`);
   });
 }
 

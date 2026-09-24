@@ -6,6 +6,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 
+export const PROVIDERS = ['gemini', 'claude', 'none'];
+
 export const MODELS = [
   { id: 'claude-opus-5', name: 'Claude Opus 5 (kualitas terbaik, direkomendasikan)' },
   { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (lebih hemat biaya)' },
@@ -15,6 +17,9 @@ const file = () => path.join(config.dataDir, 'settings.json');
 
 // Nilai asli dari .env, dicatat sekali sebelum ditimpa pengaturan dashboard.
 const ENV = {
+  aiProvider: config.aiProvider,
+  geminiApiKey: config.geminiApiKey,
+  geminiModel: config.geminiModel,
   anthropicApiKey: config.anthropicApiKey,
   claudeModel: config.claudeModel,
   googleClientId: config.googleClientId,
@@ -47,6 +52,9 @@ function persist(next) {
 // Salin pengaturan aktif ke objek config yang dibaca seluruh aplikasi.
 export function applySettings() {
   const s = loadSettings();
+  config.aiProvider = s.aiProvider || ENV.aiProvider;
+  config.geminiApiKey = s.geminiApiKey || ENV.geminiApiKey;
+  config.geminiModel = s.geminiModel || ENV.geminiModel;
   config.anthropicApiKey = s.anthropicApiKey || ENV.anthropicApiKey;
   config.claudeModel = s.claudeModel || ENV.claudeModel;
   config.googleClientId = s.googleClientId || ENV.googleClientId;

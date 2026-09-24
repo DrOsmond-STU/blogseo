@@ -1,4 +1,4 @@
-// Generator artikel memakai Claude API. Setiap panggilan menulis satu artikel
+// Generator artikel memakai Claude API (berbayar per pemakaian). Setiap panggilan menulis satu artikel
 // dengan sudut pandang (angle) tertentu, jadi tiap blog mendapat narasi berbeda.
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
@@ -17,7 +17,7 @@ export function getClient() {
 // Model yang mendukung parameter fallbacks sisi server.
 const FALLBACK_MODELS = new Set(['claude-opus-5']);
 
-const ARTICLE_SCHEMA = {
+export const ARTICLE_SCHEMA = {
   type: 'object',
   properties: {
     title: { type: 'string', description: 'Judul artikel, 50–65 karakter, memuat kata kunci secara alami.' },
@@ -30,7 +30,7 @@ const ARTICLE_SCHEMA = {
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `Anda adalah penulis konten SEO berbahasa Indonesia yang menulis artikel orisinal dan benar-benar bermanfaat bagi pembaca.
+export const SYSTEM_PROMPT = `Anda adalah penulis konten SEO berbahasa Indonesia yang menulis artikel orisinal dan benar-benar bermanfaat bagi pembaca.
 
 Aturan penulisan:
 - Tulis 700–1000 kata dalam Bahasa Indonesia yang natural, bukan terjemahan kaku.
@@ -40,7 +40,7 @@ Aturan penulisan:
 - Jangan mengarang fakta spesifik yang tidak diberikan: angka statistik, harga, nama orang, testimoni, penghargaan, atau klaim "nomor 1". Jika butuh contoh, buat contoh yang jelas bersifat ilustrasi.
 - Ikuti sudut pandang dan gaya yang diminta dengan sungguh-sungguh; struktur dan pembukaan artikel harus khas sudut pandang tersebut.`;
 
-function buildUserPrompt({ keyword, description, targetUrl, anchorText, angle, siteName }) {
+export function buildUserPrompt({ keyword, description, targetUrl, anchorText, angle, siteName }) {
   return `Kata kunci utama: ${keyword}
 Deskripsi dari pemilik situs (sumber fakta satu-satunya tentang produk/layanan):
 """
@@ -55,7 +55,7 @@ Instruksi sudut pandang: ${angle.instruction}
 Gaya bahasa: ${angle.tone}`;
 }
 
-export async function generateWithAI(input) {
+export async function generateWithClaude(input) {
   const response = await getClient().beta.messages.create({
     model: config.claudeModel,
     max_tokens: 16000,

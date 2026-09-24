@@ -96,7 +96,7 @@ async function renderNew() {
   view.innerHTML = `
     <h1>Kampanye baru</h1>
     <p class="sub">Isi kata kunci, deskripsi singkat, gambar, dan URL situs utama. Engine akan menulis artikel dengan narasi berbeda untuk setiap blog tujuan, lalu Anda review sebelum terbit.</p>
-    ${status.ai ? '' : '<div class="notice">Mode template aktif (tanpa AI). Artikel akan lebih sederhana dan sebaiknya diedit. <a href="#settings">Isi API key Claude di Pengaturan</a> agar artikel ditulis AI.</div>'}
+    ${status.ai ? '' : '<div class="notice">Mode template aktif (tanpa AI). Artikel akan lebih sederhana dan sebaiknya diedit. <a href="#settings">Isi API key Gemini (gratis) di Pengaturan</a> agar artikel ditulis AI.</div>'}
     ${sites.length ? '' : '<div class="notice info">Belum ada situs tujuan. <a href="#sites">Tambahkan blog Blogger / WordPress / webhook</a> terlebih dulu.</div>'}
     <form id="new-form" class="card">
       <div class="grid">
@@ -239,7 +239,7 @@ function postCard(p) {
           ${p.angle ? `<span class="badge">${esc(p.angle.name)}</span>` : ''}
           ${p.anchor ? `<span class="badge muted" title="Anchor text">⚓ ${esc(p.anchor.text)} (${ANCHOR_KIND[p.anchor.kind] || p.anchor.kind})</span>` : ''}
           ${simBadge(p.similarity)}
-          ${p.generator === 'template' ? badge(['template', 'warn']) : ''}
+          ${p.generator === 'template' ? badge(['template', 'warn']) : p.generator === 'gemini' ? badge(['Gemini', 'muted']) : p.generator ? badge(['Claude', 'muted']) : ''}
         </div>
         <h3>${esc(p.title || '(tanpa judul)')}</h3>
         <div class="meta">${esc(p.metaDescription || '')}</div>
@@ -491,28 +491,63 @@ function copyButton(text) {
 async function renderSettings(params) {
   const st = await api('/api/settings');
   if (params.get('google') === 'missing') toast('Isi Client ID & Client Secret Google terlebih dulu', true);
-  const aiBadge = st.anthropic.configured ? badge(['Aktif', 'ok']) : badge(['Belum diisi: mode template', 'warn']);
+  const PROVIDER_NAME = { gemini: 'Gemini', claude: 'Claude' };
+  const aiBadge = st.activeProvider ? badge([`Aktif: ${PROVIDER_NAME[st.activeProvider]}`, 'ok']) : badge(['Mode template (tanpa AI)', 'warn']);
   const gBadge = st.google.clientId && st.google.secretConfigured ? badge(['Siap', 'ok']) : badge(['Belum diisi', 'warn']);
   view.innerHTML = `
     <h1>Pengaturan</h1>
     <p class="sub">Semua pengaturan disimpan di server, dalam file yang hanya bisa dibaca akun hosting dan berada di luar folder publik. Perubahan langsung berlaku tanpa restart.</p>
 
     <form class="card" id="ai-form">
-      <h2 style="margin-top:0">Penulis AI (Claude) ${aiBadge}</h2>
-      <p class="hint">Dengan API key, setiap artikel ditulis AI dengan narasi berbeda. Tanpa API key, engine memakai template sederhana.
-        Buat API key di <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API Keys</a>. Pemakaian API berbayar sesuai jumlah artikel.</p>
-      <label>API key
-        <input name="anthropicApiKey" type="password" autocomplete="off" placeholder="${st.anthropic.configured ? `${esc(st.anthropic.masked)} (kosongkan jika tidak diganti)` : 'sk-ant-…'}" />
-        ${st.anthropic.source ? `<small>Tersimpan: ${esc(st.anthropic.masked)} · ${SOURCE_LABEL[st.anthropic.source]}</small>` : ''}
-      </label>
-      <label>Model
-        <select name="claudeModel">${st.models.map((m) => `<option value="${m.id}" ${m.id === st.claudeModel ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
-      </label>
-      <div class="actions">
-        <button class="primary">Simpan</button>
-        <button type="button" id="test-ai" ${st.anthropic.configured ? '' : 'disabled'}>Tes API key</button>
-        ${st.anthropic.source === 'dashboard' ? '<button type="button" class="danger" id="clear-ai">Hapus API key</button>' : ''}
+      <h2 style="margin-top:0">Penulis AI ${aiBadge}</h2>
+      <p class="hint">AI menulis setiap artikel dengan narasi berbeda. Tanpa AI, engine memakai template sederhana yang sebaiknya diedit manual.</p>
+      <div class="label">Pilih penulis</div>
+      <div class="checklist" style="margin-bottom:16px">
+        <label><input type="radio" name="aiProvider" value="gemini" ${st.aiProvider === 'gemini' ? 'checked' : ''} /> Google Gemini <span class="badge ok" style="margin-left:auto">gratis</span></label>
+        <label><input type="radio" name="aiProvider" value="claude" ${st.aiProvider === 'claude' ? 'checked' : ''} /> Claude <span class="badge warn" style="margin-left:auto">berbayar</span></label>
+        <label><input type="radio" name="aiProvider" value="none" ${st.aiProvider === 'none' ? 'checked' : ''} /> Tanpa AI (template)</label>
       </div>
+
+      <div data-provider="gemini">
+        <div class="notice info">
+          <strong>Cara mendapatkan API key Gemini (gratis):</strong>
+          <ol style="margin:6px 0 0 18px;padding:0">
+            <li>Buka <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> dan login dengan akun Google Anda.</li>
+            <li>Klik <em>Create API key</em>, lalu salin key-nya (diawali <code>AIza…</code>) ke kolom di bawah.</li>
+            <li>Jangan aktifkan billing di project tersebut agar tetap di paket gratis.</li>
+          </ol>
+          <p style="margin:8px 0 0">Catatan: langganan Google AI Pro di aplikasi Gemini <strong>tidak</strong> termasuk API, tetapi API punya paket gratis sendiri dengan batas jumlah artikel per menit dan per hari. Di paket gratis, Google dapat memakai isi permintaan untuk meningkatkan produknya.</p>
+        </div>
+        <label>API key Gemini
+          <input name="geminiApiKey" type="password" autocomplete="off" placeholder="${st.gemini.configured ? `${esc(st.gemini.masked)} (kosongkan jika tidak diganti)` : 'AIza…'}" />
+          ${st.gemini.source ? `<small>Tersimpan: ${esc(st.gemini.masked)} · ${SOURCE_LABEL[st.gemini.source]}</small>` : ''}
+        </label>
+        <label>Model Gemini
+          <select name="geminiModel" id="gemini-model"><option value="${esc(st.gemini.model)}">${esc(st.gemini.model)}</option></select>
+          <small>Klik "Tes & muat model" untuk melihat model yang tersedia di akun Anda. Model <em>flash</em> tersedia di paket gratis.</small>
+        </label>
+        <div class="actions">
+          <button type="button" id="test-gemini" ${st.gemini.configured ? '' : 'disabled'}>Tes & muat model</button>
+          ${st.gemini.source === 'dashboard' ? '<button type="button" class="danger" id="clear-gemini">Hapus API key Gemini</button>' : ''}
+        </div>
+      </div>
+
+      <div data-provider="claude">
+        <p class="hint">Claude berbayar per pemakaian (kira-kira beberapa ratus rupiah hingga ribuan rupiah per artikel, tergantung model). API key dibuat di <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+        <label>API key Claude
+          <input name="anthropicApiKey" type="password" autocomplete="off" placeholder="${st.anthropic.configured ? `${esc(st.anthropic.masked)} (kosongkan jika tidak diganti)` : 'sk-ant-…'}" />
+          ${st.anthropic.source ? `<small>Tersimpan: ${esc(st.anthropic.masked)} · ${SOURCE_LABEL[st.anthropic.source]}</small>` : ''}
+        </label>
+        <label>Model Claude
+          <select name="claudeModel">${st.models.map((m) => `<option value="${m.id}" ${m.id === st.claudeModel ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
+        </label>
+        <div class="actions">
+          <button type="button" id="test-ai" ${st.anthropic.configured ? '' : 'disabled'}>Tes API key Claude</button>
+          ${st.anthropic.source === 'dashboard' ? '<button type="button" class="danger" id="clear-ai">Hapus API key Claude</button>' : ''}
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:16px"><button class="primary">Simpan pengaturan AI</button></div>
     </form>
 
     <form class="card" id="google-form">
@@ -566,22 +601,50 @@ async function renderSettings(params) {
   }));
 
   const aiForm = document.getElementById('ai-form');
+  const showProvider = () => {
+    const chosen = aiForm.querySelector('[name=aiProvider]:checked')?.value;
+    aiForm.querySelectorAll('[data-provider]').forEach((el) => (el.hidden = el.dataset.provider !== chosen));
+  };
+  aiForm.querySelectorAll('[name=aiProvider]').forEach((r) => r.addEventListener('change', showProvider));
+  showProvider();
   aiForm.onsubmit = (e) => {
     e.preventDefault();
     withBusy(aiForm.querySelector('button.primary'), async () => {
       const f = aiForm.elements;
-      await api('/api/settings', { method: 'PUT', body: { anthropicApiKey: f.anthropicApiKey.value, claudeModel: f.claudeModel.value } });
+      await api('/api/settings', {
+        method: 'PUT',
+        body: {
+          aiProvider: aiForm.querySelector('[name=aiProvider]:checked')?.value,
+          geminiApiKey: f.geminiApiKey.value,
+          geminiModel: f.geminiModel.value,
+          anthropicApiKey: f.anthropicApiKey.value,
+          claudeModel: f.claudeModel.value,
+        },
+      });
       toast('Pengaturan AI disimpan');
       await reload();
     });
   };
+  document.getElementById('test-gemini')?.addEventListener('click', (e) => withBusy(e.target, async () => {
+    const r = await api('/api/settings/test-gemini', { method: 'POST' });
+    const select = document.getElementById('gemini-model');
+    select.innerHTML = r.models.map((m) => `<option value="${esc(m.id)}" ${m.id === r.model ? 'selected' : ''}>${esc(m.name)} (${esc(m.id)})</option>`).join('');
+    toast(r.message);
+    await refreshStatus();
+  }));
   document.getElementById('test-ai')?.addEventListener('click', (e) => withBusy(e.target, async () => {
     toast((await api('/api/settings/test-ai', { method: 'POST' })).message);
   }));
+  document.getElementById('clear-gemini')?.addEventListener('click', async () => {
+    if (!confirm('Hapus API key Gemini?')) return;
+    await api('/api/settings', { method: 'PUT', body: { clear: ['geminiApiKey'] } });
+    toast('API key Gemini dihapus');
+    reload();
+  });
   document.getElementById('clear-ai')?.addEventListener('click', async () => {
-    if (!confirm('Hapus API key Claude? Engine akan kembali ke mode template.')) return;
+    if (!confirm('Hapus API key Claude?')) return;
     await api('/api/settings', { method: 'PUT', body: { clear: ['anthropicApiKey'] } });
-    toast('API key dihapus');
+    toast('API key Claude dihapus');
     reload();
   });
 
@@ -619,7 +682,7 @@ async function renderSettings(params) {
 async function refreshStatus() {
   status = await api('/api/status');
   document.getElementById('mode').innerHTML =
-    (status.ai ? `Penulis: <strong>AI</strong> (${esc(status.model)})` : 'Penulis: <a href="#settings"><strong>template</strong> (tanpa AI)</a>') +
+    (status.ai ? `Penulis: <strong>${status.provider === 'gemini' ? 'Gemini' : 'Claude'}</strong> (${esc(status.model)})` : 'Penulis: <a href="#settings"><strong>template</strong> (tanpa AI)</a>') +
     (status.user ? ` · ${esc(status.user)} · <a href="/logout">Keluar</a>` : '');
 }
 

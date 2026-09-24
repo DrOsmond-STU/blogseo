@@ -1,12 +1,17 @@
 // Orkestrasi pembuatan artikel untuk satu kampanye: satu artikel per situs tujuan,
 // masing-masing dengan sudut pandang & anchor text berbeda, lalu dicek kemiripannya.
-import { aiEnabled } from '../config.js';
+import { aiEnabled, aiProvider } from '../config.js';
 import { assignAngles } from './angles.js';
 import { planAnchors } from './anchors.js';
-import { generateWithAI } from './ai.js';
+import { generateWithClaude } from './ai.js';
+import { generateWithGemini } from './gemini.js';
 import { generateWithTemplate } from './template.js';
 import { sanitizeHtml, ensureTargetLink, slugify } from './html.js';
 import { maxSimilarities } from './similarity.js';
+
+function generateWithAI(input) {
+  return aiProvider() === 'gemini' ? generateWithGemini(input) : generateWithClaude(input);
+}
 
 // Artikel dengan kemiripan 3-gram di atas ambang ini dianggap terlalu mirip.
 export const SIMILARITY_LIMIT = 0.3;
@@ -51,7 +56,7 @@ export async function generateArticle({ campaign, site, angle, anchor, useAI = a
     ...finalizeArticle(raw, { targetUrl: campaign.targetUrl, anchorText: anchor.text, linkRel: campaign.linkRel }),
     angle: { id: angle.id, name: angle.name, variant: angle.variant },
     anchor,
-    generator: useAI ? 'ai' : 'template',
+    generator: useAI ? aiProvider() : 'template',
   };
 }
 
@@ -65,7 +70,9 @@ export async function generateCampaignArticles(campaign, sites, { onProgress } =
   });
 
   let done = 0;
-  const articles = await mapLimit(sites, 3, async (site, i) => {
+  // Paket gratis Gemini dibatasi per menit, jadi permintaan paralel dikurangi.
+  const concurrency = aiProvider() === 'gemini' ? 2 : 3;
+  const articles = await mapLimit(sites, concurrency, async (site, i) => {
     try {
       const article = await generateArticle({ campaign, site, angle: angles[i], anchor: anchors[i] });
       return { ok: true, article };
