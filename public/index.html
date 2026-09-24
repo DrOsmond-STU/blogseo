@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BlogSEO Engine</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Blog<span>SEO</span> Engine</div>
+    <nav>
+      <a href="#new" data-nav="new">Kampanye Baru</a>
+      <a href="#campaigns" data-nav="campaigns">Kampanye</a>
+      <a href="#sites" data-nav="sites">Situs Tujuan</a>
+      <a href="#help" data-nav="help">Panduan</a>
+    </nav>
+    <div id="mode" class="mode"></div>
+  </header>
+  <main id="view"></main>
+
+  <dialog id="editor">
+    <form method="dialog" class="editor">
+      <div class="editor-head">
+        <h3>Edit artikel</h3>
+        <button value="cancel" class="ghost" aria-label="Tutup">✕</button>
+      </div>
+      <label>Judul <input name="title" required /></label>
+      <label>Meta description <textarea name="metaDescription" rows="2" maxlength="160"></textarea></label>
+      <label>Label / tag (pisahkan dengan koma) <input name="labels" /></label>
+      <div class="editor-body">
+        <label>HTML <textarea name="html" rows="18"></textarea></label>
+        <div>
+          <div class="label">Pratinjau</div>
+          <article class="preview" id="editor-preview"></article>
+        </div>
+      </div>
+      <div class="actions">
+        <button value="cancel" class="ghost">Batal</button>
+        <button value="save" class="primary">Simpan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

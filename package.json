@@ -1,0 +1,22 @@
+{
+  "name": "blogseo",
+  "version": "1.0.0",
+  "description": "Web engine SEO: tulis kata kunci + deskripsi + gambar + URL, lalu engine membuat artikel dengan narasi berbeda dan memposting ke banyak blog (Blogger, WordPress, webhook).",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "dotenv": "^18.0.3",
+    "express": "^4.22.3",
+    "multer": "^2.4.0"
+  }
+}
