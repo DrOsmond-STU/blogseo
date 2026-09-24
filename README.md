@@ -25,7 +25,7 @@ npm start               # buka http://localhost:3000
 |---|---|
 | `ANTHROPIC_API_KEY` | Kunci API Claude (console.anthropic.com). Jika kosong, engine memakai mode template yang lebih sederhana. |
 | `CLAUDE_MODEL` | Default `claude-opus-5`. |
-| `ADMIN_PASSWORD` | Password dashboard (login HTTP Basic, username bebas). **Wajib** jika server bisa diakses dari internet. |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | Login dashboard (default username `admin`). Password **wajib** diisi jika server bisa diakses dari internet. |
 | `PUBLIC_BASE_URL` | URL publik aplikasi, dipakai untuk callback Google dan URL gambar yang di-upload. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Untuk posting ke Blogger (lihat di bawah). |
 | `DATA_DIR` | Lokasi database JSON & gambar upload (default `./data`). |

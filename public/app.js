@@ -13,6 +13,10 @@ async function api(path, options = {}) {
     opts.body = JSON.stringify(opts.body);
   }
   const res = await fetch(path, opts);
+  if (res.status === 401) {
+    location.href = '/login';
+    throw new Error('Sesi berakhir. Silakan login lagi.');
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -480,7 +484,9 @@ async function renderHelp() {
 // ---------- init ----------
 (async () => {
   status = await api('/api/status');
-  document.getElementById('mode').innerHTML = status.ai ? `Penulis: <strong>AI</strong> (${esc(status.model)})` : 'Penulis: <strong>template</strong> (tanpa AI)';
+  document.getElementById('mode').innerHTML =
+    (status.ai ? `Penulis: <strong>AI</strong> (${esc(status.model)})` : 'Penulis: <strong>template</strong> (tanpa AI)') +
+    (status.user ? ` · ${esc(status.user)} · <a href="/logout">Keluar</a>` : '');
   window.addEventListener('hashchange', route);
   route();
 })();

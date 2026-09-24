@@ -10,6 +10,7 @@ export const config = {
   // Isi 127.0.0.1 jika aplikasi berada di balik reverse proxy (Apache/Nginx).
   host: process.env.HOST || undefined,
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
+  adminUser: (process.env.ADMIN_USER || 'admin').trim(),
   adminPassword: process.env.ADMIN_PASSWORD || '',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   claudeModel: process.env.CLAUDE_MODEL || 'claude-opus-5',

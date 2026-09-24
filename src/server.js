@@ -14,6 +14,7 @@ import { assignAngles, ANGLES } from './generator/angles.js';
 import { planAnchors } from './generator/anchors.js';
 import { maxSimilarities } from './generator/similarity.js';
 import { schedulePosts, publishPost, startQueue } from './queue.js';
+import { isLoggedIn, loginHandler, logoutHandler, requireLogin } from './auth.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 fs.mkdirSync(config.uploadDir, { recursive: true });
@@ -21,22 +22,25 @@ fs.mkdirSync(config.uploadDir, { recursive: true });
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-// ---- Autentikasi sederhana (HTTP Basic) ----
-if (config.adminPassword) {
-  app.use((req, res, next) => {
-    const [scheme, encoded] = (req.headers.authorization || '').split(' ');
-    const password = scheme === 'Basic' ? Buffer.from(encoded || '', 'base64').toString().split(':').slice(1).join(':') : '';
-    const a = Buffer.from(password);
-    const b = Buffer.from(config.adminPassword);
-    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return next();
-    res.set('WWW-Authenticate', 'Basic realm="BlogSEO"').status(401).send('Login diperlukan');
-  });
-} else {
+app.use(express.urlencoded({ extended: false, limit: '20kb' }));
+
+const publicDir = path.join(here, '..', 'public');
+
+// Gambar upload harus bisa diakses publik: artikel di Blogger/website lain menautkannya.
+// Nama file acak, jadi tidak bisa ditebak.
+app.use('/uploads', express.static(config.uploadDir, { maxAge: '30d' }));
+
+// ---- Login ----
+app.get('/login', (req, res) => (isLoggedIn(req) ? res.redirect('/') : res.sendFile(path.join(publicDir, 'login.html'))));
+app.post('/login', loginHandler);
+app.get('/logout', logoutHandler);
+app.get('/style.css', (req, res) => res.sendFile(path.join(publicDir, 'style.css')));
+if (!config.adminPassword) {
   console.warn('[peringatan] ADMIN_PASSWORD kosong: dashboard terbuka tanpa login. Jangan jalankan di server publik.');
 }
+app.use(requireLogin);
 
-app.use(express.static(path.join(here, '..', 'public')));
-app.use('/uploads', express.static(config.uploadDir, { maxAge: '30d' }));
+app.use(express.static(publicDir));
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -74,6 +78,7 @@ function publicSite(site) {
 // ---- Status ----
 app.get('/api/status', (req, res) => {
   res.json({
+    user: config.adminPassword ? config.adminUser : null,
     ai: aiEnabled(),
     model: aiEnabled() ? config.claudeModel : null,
     google: googleEnabled(),

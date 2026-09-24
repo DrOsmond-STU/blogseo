@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Masuk · BlogSEO Engine</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="login-page">
+  <form class="card login-card" method="post" action="/login">
+    <div class="brand">Blog<span>SEO</span> Engine</div>
+    <p class="sub">Masuk untuk membuka dashboard.</p>
+    <div id="err" class="notice" hidden></div>
+    <label>Username<input name="username" autocomplete="username" required autofocus /></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
+    <button class="primary" style="width:100%">Masuk</button>
+  </form>
+  <script>
+    const e = new URLSearchParams(location.search).get('e');
+    if (e) {
+      const box = document.getElementById('err');
+      box.textContent = e === 'locked' ? 'Terlalu banyak percobaan gagal. Coba lagi 15 menit lagi.' : 'Username atau password salah.';
+      box.hidden = false;
+    }
+  </script>
+</body>
+</html>
