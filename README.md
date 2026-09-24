@@ -85,7 +85,7 @@ Pola yang dipakai di `blogseo.semestateknologiutama.com`:
 
 1. Kode di-clone lewat **Git Deploy** ke `~/blogseo-app` (di luar document root).
 2. `~/blogseo-app/.env` berisi `HOST=127.0.0.1`, `PORT=3761`, `DATA_DIR=/home/semestat/blogseo-data`, dan kunci-kunci lainnya.
-3. [`deploy/blogseo-runner.sh`](deploy/blogseo-runner.sh) disalin ke `~/blogseo-runner.sh` dan dijalankan cron tiap 5 menit. Skrip ini memasang dependensi, menyalakan aplikasi, dan me-restart otomatis setelah deploy baru.
+3. [`deploy/blogseo-runner.sh`](deploy/blogseo-runner.sh) disalin ke `~/blogseo-runner.sh` dan dijalankan cron (misalnya tiap 6 menit, dengan `flock -n`). Skrip ini memasang dependensi, menyalakan aplikasi, dan me-restart otomatis setelah deploy baru.
 4. [`deploy/htaccess`](deploy/htaccess) disalin sebagai `.htaccess` di document root subdomain, untuk meneruskan semua permintaan ke `127.0.0.1:3761`.
 
 Setelah mengubah `.env`, hapus `~/.blogseo-rev` agar aplikasi di-restart pada putaran cron berikutnya.

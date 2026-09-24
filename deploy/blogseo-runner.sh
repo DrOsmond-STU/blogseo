@@ -3,8 +3,7 @@
 #  BlogSEO Engine — penjaga proses untuk shared hosting cPanel (tanpa Passenger).
 #
 #  Dipanggil cron setiap beberapa menit:
-#    /usr/bin/flock -n -o ~/.blogseo-runner2.lock /bin/bash ~/blogseo-runner.sh
-#  (-o wajib: tanpa itu proses node mewarisi kunci dan cron berikutnya selalu ditolak)
+#    /usr/bin/flock -n ~/.blogseo-runner.lock /bin/bash ~/blogseo-runner.sh
 #
 #  1. Memasang dependensi bila belum ada atau package-lock.json berubah.
 #  2. Menyalakan ulang aplikasi bila kode berubah (setelah Git Deploy).
@@ -51,9 +50,19 @@ if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; the
   sleep 3
 fi
 
+# Tutup semua file descriptor >2 sebelum exec. Tanpa ini proses node mewarisi
+# kunci flock dari cron, sehingga setiap putaran cron berikutnya ditolak dan
+# aplikasi tidak pernah di-restart setelah deploy.
+start_detached() {
+  for fd in $(ls /proc/$BASHPID/fd); do
+    [ "$fd" -gt 2 ] && eval "exec $fd>&-" 2>/dev/null
+  done
+  exec "$@"
+}
+
 export NODE_OPTIONS="--max-old-space-size=256"
 echo "=== $(date) menyalakan (rev $REV) ===" >> "$LOG"
-nohup node src/server.js >> "$LOG" 2>&1 &
+( start_detached node src/server.js ) >> "$LOG" 2>&1 < /dev/null &
 echo $! > "$PIDFILE"
 echo "$REV" > "$REV_FILE"
 
