@@ -14,11 +14,16 @@ export const config = {
   adminPassword: process.env.ADMIN_PASSWORD || '',
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   claudeModel: process.env.CLAUDE_MODEL || 'claude-opus-5',
-  // Penyedia AI: 'gemini', 'claude', 'none', atau kosong = otomatis (Gemini dulu jika ada key).
-  aiProvider: process.env.AI_PROVIDER || '',
+  // Urutan penyedia AI (dipisah koma) dan mode: 'fallback' (berurutan/cadangan) atau 'mix' (bergantian).
+  aiOrder: (process.env.AI_ORDER || 'gemini,claude,openai').split(',').map((x) => x.trim()).filter(Boolean),
+  aiDisabled: (process.env.AI_DISABLED || '').split(',').map((x) => x.trim()).filter(Boolean),
+  aiMode: process.env.AI_MODE || 'fallback',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   geminiBaseUrl: (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, ''),
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
+  openaiModel: process.env.OPENAI_MODEL || 'gpt-5-mini',
+  openaiBaseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, ''),
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
   dataDir,
@@ -28,23 +33,29 @@ export const config = {
   queueIntervalMs: Number(process.env.QUEUE_INTERVAL_MS || 20000),
 };
 
-// Penyedia AI yang benar-benar aktif (punya API key), atau null = mode template.
-export function aiProvider() {
-  const choice = config.aiProvider;
-  if (choice === 'none') return null;
-  if (choice === 'gemini') return config.geminiApiKey ? 'gemini' : null;
-  if (choice === 'claude') return config.anthropicApiKey ? 'claude' : null;
-  if (config.geminiApiKey) return 'gemini';
-  return config.anthropicApiKey ? 'claude' : null;
+export const AI_PROVIDERS = {
+  gemini: { name: 'Google Gemini', keyField: 'geminiApiKey', modelField: 'geminiModel', paid: false },
+  claude: { name: 'Claude', keyField: 'anthropicApiKey', modelField: 'claudeModel', paid: true },
+  openai: { name: 'ChatGPT (OpenAI)', keyField: 'openaiApiKey', modelField: 'openaiModel', paid: true },
+};
+
+// Urutan lengkap semua penyedia (yang tidak disebut di aiOrder ditaruh di belakang).
+export function providerOrder() {
+  const known = config.aiOrder.filter((id) => AI_PROVIDERS[id]);
+  return [...new Set([...known, ...Object.keys(AI_PROVIDERS)])];
+}
+
+// Penyedia AI yang aktif (punya API key & tidak dinonaktifkan), sesuai urutan prioritas.
+export function activeProviders() {
+  return providerOrder().filter((id) => config[AI_PROVIDERS[id].keyField] && !config.aiDisabled.includes(id));
 }
 
 export function aiEnabled() {
-  return Boolean(aiProvider());
+  return activeProviders().length > 0;
 }
 
-export function aiModel() {
-  const p = aiProvider();
-  return p === 'gemini' ? config.geminiModel : p === 'claude' ? config.claudeModel : null;
+export function modelOf(id) {
+  return AI_PROVIDERS[id] ? config[AI_PROVIDERS[id].modelField] : null;
 }
 
 export function googleEnabled() {

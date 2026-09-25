@@ -48,10 +48,10 @@ const load = async () => {
   return { config, ...(await import('../src/generator/gemini.js')), ...(await import('../src/config.js')) };
 };
 
-test('Gemini dipilih otomatis bila API key ada', async () => {
-  const { aiProvider, aiModel } = await load();
-  assert.equal(aiProvider(), 'gemini');
-  assert.equal(aiModel(), 'gemini-2.5-flash');
+test('Gemini aktif otomatis bila API key ada', async () => {
+  const { activeProviders, modelOf } = await load();
+  assert.deepEqual(activeProviders(), ['gemini']);
+  assert.equal(modelOf('gemini'), 'gemini-2.5-flash');
 });
 
 test('menulis artikel: kirim skema JSON, abaikan bagian "thought"', async () => {

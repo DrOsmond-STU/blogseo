@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
-import { config, aiEnabled, aiProvider, aiModel, googleEnabled } from './config.js';
+import { config, aiEnabled, activeProviders, providerOrder, modelOf, AI_PROVIDERS, googleEnabled } from './config.js';
 import { db } from './db.js';
 import { buildAuthUrl, consumeState, exchangeCode } from './google.js';
 import { listBlogs } from './publishers/blogger.js';
@@ -15,8 +15,9 @@ import { planAnchors } from './generator/anchors.js';
 import { maxSimilarities } from './generator/similarity.js';
 import { schedulePosts, publishPost, startQueue } from './queue.js';
 import { isLoggedIn, loginHandler, logoutHandler, requireLogin, setSession } from './auth.js';
-import { applySettings, updateSettings, sourceOf, maskSecret, authEnabled, verifyPassword, setPassword, MODELS, PROVIDERS } from './settings.js';
+import { applySettings, updateSettings, sourceOf, maskSecret, authEnabled, verifyPassword, setPassword, MODELS } from './settings.js';
 import { listGeminiModels, GeminiError } from './generator/gemini.js';
+import { listOpenAIModels, OpenAIError } from './generator/openai.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { getClient } from './generator/ai.js';
 
@@ -86,8 +87,8 @@ app.get('/api/status', (req, res) => {
   res.json({
     user: authEnabled() ? config.adminUser : null,
     ai: aiEnabled(),
-    provider: aiProvider(),
-    model: aiModel(),
+    mode: config.aiMode,
+    writers: activeProviders().map((id) => ({ id, name: AI_PROVIDERS[id].name, model: modelOf(id) })),
     google: googleEnabled(),
     publicBaseUrl: config.publicBaseUrl,
     redirectUri: `${config.publicBaseUrl}/auth/google/callback`,
@@ -99,21 +100,23 @@ app.get('/api/status', (req, res) => {
 // ---- Pengaturan (diisi dari dashboard, tanpa edit .env) ----
 function settingsView() {
   return {
-    aiProvider: config.aiProvider || (config.anthropicApiKey && !config.geminiApiKey ? 'claude' : 'gemini'),
-    activeProvider: aiProvider(),
-    gemini: {
-      configured: Boolean(config.geminiApiKey),
-      masked: maskSecret(config.geminiApiKey),
-      source: sourceOf('geminiApiKey'),
-      model: config.geminiModel,
-    },
-    anthropic: {
-      configured: Boolean(config.anthropicApiKey),
-      masked: maskSecret(config.anthropicApiKey),
-      source: sourceOf('anthropicApiKey'),
-    },
-    claudeModel: config.claudeModel,
-    models: MODELS,
+    aiMode: config.aiMode,
+    providers: providerOrder().map((id) => {
+      const meta = AI_PROVIDERS[id];
+      const key = config[meta.keyField];
+      return {
+        id,
+        name: meta.name,
+        paid: meta.paid,
+        configured: Boolean(key),
+        masked: maskSecret(key),
+        source: sourceOf(meta.keyField),
+        model: modelOf(id),
+        enabled: !config.aiDisabled.includes(id),
+        active: activeProviders().includes(id),
+      };
+    }),
+    claudeModels: MODELS,
     google: {
       clientId: config.googleClientId,
       clientIdSource: sourceOf('googleClientId'),
@@ -132,9 +135,29 @@ app.get('/api/settings', (req, res) => res.json(settingsView()));
 app.put('/api/settings', wrap(async (req, res) => {
   const b = req.body || {};
   const patch = {};
-  if (b.aiProvider !== undefined) {
-    if (!PROVIDERS.includes(b.aiProvider)) throw badRequest('Penyedia AI tidak dikenal');
-    patch.aiProvider = b.aiProvider;
+  const ids = Object.keys(AI_PROVIDERS);
+  if (b.aiOrder !== undefined) {
+    if (!Array.isArray(b.aiOrder) || b.aiOrder.length !== ids.length || !ids.every((id) => b.aiOrder.includes(id))) {
+      throw badRequest('Urutan AI tidak valid');
+    }
+    patch.aiOrder = b.aiOrder;
+  }
+  if (b.aiDisabled !== undefined) {
+    if (!Array.isArray(b.aiDisabled) || !b.aiDisabled.every((id) => ids.includes(id))) throw badRequest('Daftar AI nonaktif tidak valid');
+    patch.aiDisabled = [...new Set(b.aiDisabled)];
+  }
+  if (b.aiMode !== undefined) {
+    if (!['fallback', 'mix'].includes(b.aiMode)) throw badRequest('Mode AI tidak dikenal');
+    patch.aiMode = b.aiMode;
+  }
+  if (typeof b.openaiApiKey === 'string' && b.openaiApiKey.trim()) {
+    const key = b.openaiApiKey.trim();
+    if (!/^sk-/.test(key) || /\s/.test(key)) throw badRequest('API key OpenAI biasanya diawali "sk-". Periksa kembali.');
+    patch.openaiApiKey = key;
+  }
+  if (typeof b.openaiModel === 'string' && b.openaiModel.trim()) {
+    if (!/^[a-z0-9][a-z0-9.:\-]*$/i.test(b.openaiModel.trim())) throw badRequest('Nama model OpenAI tidak valid');
+    patch.openaiModel = b.openaiModel.trim();
   }
   if (typeof b.geminiApiKey === 'string' && b.geminiApiKey.trim()) {
     const key = b.geminiApiKey.trim();
@@ -166,7 +189,7 @@ app.put('/api/settings', wrap(async (req, res) => {
     patch.googleClientSecret = b.googleClientSecret.trim();
   }
   for (const key of b.clear || []) {
-    if (['geminiApiKey', 'anthropicApiKey', 'googleClientId', 'googleClientSecret'].includes(key)) patch[key] = null;
+    if (['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'googleClientId', 'googleClientSecret'].includes(key)) patch[key] = null;
   }
   updateSettings(patch);
   res.json(settingsView());
@@ -186,6 +209,23 @@ app.post('/api/settings/test-gemini', wrap(async (req, res) => {
   } catch (err) {
     if (err instanceof GeminiError) throw badRequest(err.message);
     if (err.cause || err.name === 'TypeError') throw badRequest('Server tidak bisa menghubungi Google Gemini API. Coba lagi nanti.');
+    throw err;
+  }
+}));
+
+app.post('/api/settings/test-openai', wrap(async (req, res) => {
+  if (!config.openaiApiKey) throw badRequest('API key OpenAI belum diisi');
+  try {
+    const models = await listOpenAIModels();
+    if (!models.length) throw badRequest('API key valid, tetapi tidak ada model teks yang tersedia.');
+    if (!models.some((m) => m.id === config.openaiModel)) {
+      const pick = models.find((m) => /mini/.test(m.id)) || models[0];
+      updateSettings({ openaiModel: pick.id });
+    }
+    res.json({ message: `API key OpenAI valid. Model aktif: ${config.openaiModel}. Catatan: pemakaian API OpenAI berbayar.`, models, model: config.openaiModel });
+  } catch (err) {
+    if (err instanceof OpenAIError) throw badRequest(err.message);
+    if (err.cause || err.name === 'TypeError') throw badRequest('Server tidak bisa menghubungi api.openai.com. Coba lagi nanti.');
     throw err;
   }
 }));
@@ -444,7 +484,7 @@ app.post('/api/posts/:id/regenerate', wrap(async (req, res) => {
   const candidates = assignAngles(ANGLES.length, `${campaign.id}:${Date.now()}`);
   const angle = candidates.find((a) => !used.has(a.id)) || { ...candidates[0], variant: 2 };
   const anchor = post.anchor || planAnchors(1, { keyword: campaign.keyword, targetUrl: campaign.targetUrl, brandName: campaign.brandName, seed: post.id })[0];
-  const article = await generateArticle({ campaign, site, angle, anchor });
+  const article = await generateArticle({ campaign, site, angle, anchor, slot: Math.floor(Math.random() * 3) });
   db.update('posts', post.id, { ...article, status: 'generated', error: null });
   recomputeSimilarity(campaign.id);
   res.json(db.get('posts', post.id));
@@ -481,7 +521,7 @@ export function start() {
   startQueue();
   return app.listen(config.port, config.host, () => {
     console.log(`BlogSEO berjalan di http://${config.host || 'localhost'}:${config.port}`);
-    console.log(`Mode penulisan: ${aiEnabled() ? `AI ${aiProvider()} (${aiModel()})` : 'template (isi API key Gemini/Claude di menu Pengaturan)'}`);
+    console.log(`Mode penulisan: ${aiEnabled() ? `AI ${activeProviders().join(' → ')} (${config.aiMode})` : 'template (isi API key AI di menu Pengaturan)'}`);
   });
 }
 

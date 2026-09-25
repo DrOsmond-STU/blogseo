@@ -22,9 +22,11 @@ const MAX_RETRIES = 3;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class GeminiError extends Error {
-  constructor(message, status) {
+  // fatal = tidak ada gunanya dicoba lagi dalam waktu dekat (key salah, kuota harian habis, model tidak ada).
+  constructor(message, status, fatal = false) {
     super(message);
     this.status = status;
+    this.fatal = fatal;
   }
 }
 
@@ -64,7 +66,9 @@ async function geminiFetch(path, { method = 'GET', body } = {}) {
       await sleep(retryDelayMs(data, attempt));
       continue;
     }
-    throw new GeminiError(friendlyError(res.status, data), res.status);
+    const invalidKey = res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(data?.error?.message || '');
+    const fatal = invalidKey || [401, 403, 404].includes(res.status) || (res.status === 429 && perDay);
+    throw new GeminiError(friendlyError(res.status, data), res.status, fatal);
   }
 }
 

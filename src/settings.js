@@ -6,8 +6,6 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { config } from './config.js';
 
-export const PROVIDERS = ['gemini', 'claude', 'none'];
-
 export const MODELS = [
   { id: 'claude-opus-5', name: 'Claude Opus 5 (kualitas terbaik, direkomendasikan)' },
   { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (lebih hemat biaya)' },
@@ -17,7 +15,11 @@ const file = () => path.join(config.dataDir, 'settings.json');
 
 // Nilai asli dari .env, dicatat sekali sebelum ditimpa pengaturan dashboard.
 const ENV = {
-  aiProvider: config.aiProvider,
+  aiOrder: config.aiOrder,
+  aiDisabled: config.aiDisabled,
+  aiMode: config.aiMode,
+  openaiApiKey: config.openaiApiKey,
+  openaiModel: config.openaiModel,
   geminiApiKey: config.geminiApiKey,
   geminiModel: config.geminiModel,
   anthropicApiKey: config.anthropicApiKey,
@@ -52,7 +54,11 @@ function persist(next) {
 // Salin pengaturan aktif ke objek config yang dibaca seluruh aplikasi.
 export function applySettings() {
   const s = loadSettings();
-  config.aiProvider = s.aiProvider || ENV.aiProvider;
+  config.aiOrder = s.aiOrder || ENV.aiOrder;
+  config.aiDisabled = s.aiDisabled ?? ENV.aiDisabled;
+  config.aiMode = s.aiMode || ENV.aiMode;
+  config.openaiApiKey = s.openaiApiKey || ENV.openaiApiKey;
+  config.openaiModel = s.openaiModel || ENV.openaiModel;
   config.geminiApiKey = s.geminiApiKey || ENV.geminiApiKey;
   config.geminiModel = s.geminiModel || ENV.geminiModel;
   config.anthropicApiKey = s.anthropicApiKey || ENV.anthropicApiKey;

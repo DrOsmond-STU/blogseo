@@ -3,7 +3,7 @@
 Web engine untuk membuat dan memposting artikel SEO ke banyak blog/website sekaligus.
 Anda cukup mengisi **kata kunci + deskripsi sederhana + gambar + URL situs utama**, lalu engine:
 
-1. Menulis **satu artikel per blog dengan narasi berbeda** (panduan, daftar tips, FAQ, cerita, kesalahan umum, tips memilih, tren, untuk pemula) memakai AI: **Google Gemini** (ada paket gratis) atau Claude (berbayar).
+1. Menulis **satu artikel per blog dengan narasi berbeda** (panduan, daftar tips, FAQ, cerita, kesalahan umum, tips memilih, tren, untuk pemula) memakai AI: **Google Gemini** (ada paket gratis), Claude, dan/atau ChatGPT (OpenAI), berbayar. Bisa diisi beberapa API key sekaligus dengan urutan prioritas.
 2. Memberi **anchor text yang bervariasi** (brand, generik, partial match, URL, exact match terbatas) untuk link ke situs utama.
 3. **Mengecek kemiripan** antar artikel; artikel yang terlalu mirip otomatis ditulis ulang.
 4. Menampilkan semua artikel untuk **direview/diedit** sebelum terbit.
@@ -21,7 +21,7 @@ npm start               # buka http://localhost:3000
 
 ### Pengaturan dari dashboard
 
-Penulis AI (Gemini gratis / Claude berbayar / tanpa AI), API key & model, Client ID/Secret Google untuk Blogger, serta username & password login bisa diatur dari menu **Pengaturan** di dashboard, tanpa mengedit `.env` dan tanpa restart. Nilainya disimpan di `DATA_DIR/settings.json` (izin 0600); password disimpan sebagai hash scrypt. Menu ini juga berisi panduan langkah demi langkah membuat OAuth client Google beserta Redirect URI yang harus didaftarkan.
+Penulis AI (Gemini, Claude, ChatGPT; urutan prioritas; mode berurutan/cadangan atau bergantian/campur), API key & model, Client ID/Secret Google untuk Blogger, serta username & password login bisa diatur dari menu **Pengaturan** di dashboard, tanpa mengedit `.env` dan tanpa restart. Nilainya disimpan di `DATA_DIR/settings.json` (izin 0600); password disimpan sebagai hash scrypt. Menu ini juga berisi panduan langkah demi langkah membuat OAuth client Google beserta Redirect URI yang harus didaftarkan.
 
 ### Isi `.env` (hanya pengaturan server)
 
@@ -31,12 +31,22 @@ Penulis AI (Gemini gratis / Claude berbayar / tanpa AI), API key & model, Client
 | `HOST` / `PORT` | Alamat & port yang didengarkan. Isi `HOST=127.0.0.1` di balik reverse proxy. |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | Login awal dashboard. Setelah password diganti dari Pengaturan, nilai ini tidak dipakai lagi. |
 | `DATA_DIR` | Lokasi database JSON, pengaturan, & gambar upload (default `./data`). |
-| `AI_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Opsional, cadangan jika tidak diisi dari menu Pengaturan. |
+| `AI_ORDER`, `AI_MODE`, `AI_DISABLED`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Opsional, cadangan jika tidak diisi dari menu Pengaturan. |
 
 ### Biaya AI
 
 - **Gemini**: API key dibuat gratis di [Google AI Studio](https://aistudio.google.com/apikey). Paket gratis dibatasi jumlah permintaan per menit & per hari; engine otomatis menunggu dan mencoba ulang saat batas per menit tercapai. Langganan Google AI Pro (aplikasi Gemini) tidak termasuk API. Di paket gratis, Google dapat memakai isi permintaan untuk meningkatkan produknya.
 - **Claude**: berbayar per pemakaian lewat [console.anthropic.com](https://console.anthropic.com).
+- **ChatGPT (OpenAI)**: berbayar per pemakaian dengan saldo di [platform.openai.com](https://platform.openai.com/api-keys). Langganan ChatGPT Plus tidak termasuk API.
+
+### Beberapa AI sekaligus
+
+Urutan AI diatur di Pengaturan (tombol ↑/↓):
+
+- **Berurutan (cadangan)**: semua artikel ditulis AI nomor 1; jika gagal, otomatis pindah ke nomor 2, lalu 3.
+- **Bergantian (campur)**: artikel ke-1 ditulis AI nomor 1, artikel ke-2 AI nomor 2, dst., sehingga gaya tulisan antar blog makin beragam. Cadangan tetap berlaku.
+
+AI yang key-nya salah atau saldo/kuota hariannya habis dilewati untuk sisa kampanye. Jika semua AI gagal, artikel tetap dibuat dengan template dan diberi peringatan.
 
 ## Menghubungkan situs tujuan
 

@@ -96,7 +96,7 @@ async function renderNew() {
   view.innerHTML = `
     <h1>Kampanye baru</h1>
     <p class="sub">Isi kata kunci, deskripsi singkat, gambar, dan URL situs utama. Engine akan menulis artikel dengan narasi berbeda untuk setiap blog tujuan, lalu Anda review sebelum terbit.</p>
-    ${status.ai ? '' : '<div class="notice">Mode template aktif (tanpa AI). Artikel akan lebih sederhana dan sebaiknya diedit. <a href="#settings">Isi API key Gemini (gratis) di Pengaturan</a> agar artikel ditulis AI.</div>'}
+    ${status.ai ? '' : '<div class="notice">Mode template aktif (tanpa AI). Artikel akan lebih sederhana dan sebaiknya diedit. <a href="#settings">Isi API key AI di Pengaturan</a> (Gemini gratis) agar artikel ditulis AI.</div>'}
     ${sites.length ? '' : '<div class="notice info">Belum ada situs tujuan. <a href="#sites">Tambahkan blog Blogger / WordPress / webhook</a> terlebih dulu.</div>'}
     <form id="new-form" class="card">
       <div class="grid">
@@ -239,7 +239,7 @@ function postCard(p) {
           ${p.angle ? `<span class="badge">${esc(p.angle.name)}</span>` : ''}
           ${p.anchor ? `<span class="badge muted" title="Anchor text">⚓ ${esc(p.anchor.text)} (${ANCHOR_KIND[p.anchor.kind] || p.anchor.kind})</span>` : ''}
           ${simBadge(p.similarity)}
-          ${p.generator === 'template' ? badge(['template', 'warn']) : p.generator === 'gemini' ? badge(['Gemini', 'muted']) : p.generator ? badge(['Claude', 'muted']) : ''}
+          ${p.generator === 'template' ? badge(['template', 'warn']) : p.generator ? badge([{ gemini: 'Gemini', claude: 'Claude', openai: 'ChatGPT' }[p.generator] || p.generator, 'muted']) : ''}
         </div>
         <h3>${esc(p.title || '(tanpa judul)')}</h3>
         <div class="meta">${esc(p.metaDescription || '')}</div>
@@ -483,6 +483,13 @@ async function renderHelp() {
 
 // ---------- Pengaturan ----------
 const SOURCE_LABEL = { dashboard: 'disimpan dari dashboard', env: 'dari file .env' };
+const PROVIDER_HELP = {
+  gemini: 'Gratis dengan batas harian. Buat key di <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (login akun Google → <em>Create API key</em>). Jangan aktifkan billing agar tetap gratis. Langganan Google AI Pro tidak termasuk API. Di paket gratis, Google dapat memakai isi permintaan untuk meningkatkan produknya.',
+  claude: 'Berbayar per artikel (kira-kira beberapa ratus hingga beberapa ribu rupiah, tergantung model). Buat key di <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.',
+  openai: 'Berbayar per artikel, perlu isi saldo lebih dulu. Langganan ChatGPT Plus tidak termasuk API. Buat key di <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>.',
+};
+const PROVIDER_KEY_HINT = { gemini: 'AIza…', claude: 'sk-ant-…', openai: 'sk-…' };
+const SHORT_NAME = { gemini: 'Gemini', claude: 'Claude', openai: 'ChatGPT' };
 
 function copyButton(text) {
   return `<button type="button" class="small" data-copy="${esc(text)}">Salin</button>`;
@@ -491,8 +498,39 @@ function copyButton(text) {
 async function renderSettings(params) {
   const st = await api('/api/settings');
   if (params.get('google') === 'missing') toast('Isi Client ID & Client Secret Google terlebih dulu', true);
-  const PROVIDER_NAME = { gemini: 'Gemini', claude: 'Claude' };
-  const aiBadge = st.activeProvider ? badge([`Aktif: ${PROVIDER_NAME[st.activeProvider]}`, 'ok']) : badge(['Mode template (tanpa AI)', 'warn']);
+  const activeNames = st.providers.filter((p) => p.active).map((p) => SHORT_NAME[p.id]);
+  const aiBadge = activeNames.length
+    ? `<span class="badge ok" style="white-space:normal">Aktif: ${esc(activeNames.join(st.aiMode === 'mix' ? ' + ' : ' → '))}</span>`
+    : badge(['Mode template (tanpa AI)', 'warn']);
+  const providerPanel = (p, i) => `
+    <div class="provider" data-id="${p.id}">
+      <div class="provider-head">
+        <span class="num">${i + 1}</span>
+        <strong>${esc(p.name)}</strong>
+        ${p.paid ? badge(['berbayar', 'warn']) : badge(['gratis', 'ok'])}
+        ${p.active ? badge(['aktif', 'ok']) : p.configured ? badge(['nonaktif', 'muted']) : badge(['belum ada key', 'muted'])}
+        <span style="margin-left:auto;display:flex;gap:4px">
+          <button type="button" class="small" data-move="-1" title="Naikkan prioritas">↑</button>
+          <button type="button" class="small" data-move="1" title="Turunkan prioritas">↓</button>
+        </span>
+      </div>
+      <label style="font-weight:400;margin:8px 0"><input type="checkbox" name="enabled" ${p.enabled ? 'checked' : ''} /> Pakai AI ini</label>
+      <p class="hint" style="margin:0 0 10px">${PROVIDER_HELP[p.id]}</p>
+      <label>API key
+        <input name="apiKey" type="password" autocomplete="off" placeholder="${p.configured ? `${esc(p.masked)} (kosongkan jika tidak diganti)` : PROVIDER_KEY_HINT[p.id]}" />
+        ${p.source ? `<small>Tersimpan: ${esc(p.masked)} · ${SOURCE_LABEL[p.source]}</small>` : ''}
+      </label>
+      <label>Model
+        <select name="model">${p.id === 'claude'
+          ? st.claudeModels.map((m) => `<option value="${m.id}" ${m.id === p.model ? 'selected' : ''}>${esc(m.name)}</option>`).join('')
+          : `<option value="${esc(p.model)}">${esc(p.model)}</option>`}</select>
+        ${p.id === 'claude' ? '' : '<small>Klik "Simpan & tes" untuk memuat daftar model yang tersedia di akun Anda.</small>'}
+      </label>
+      <div class="actions">
+        <button type="button" data-test="${p.id}">Simpan & tes</button>
+        ${p.source === 'dashboard' ? `<button type="button" class="danger" data-clear="${p.id}">Hapus key</button>` : ''}
+      </div>
+    </div>`;
   const gBadge = st.google.clientId && st.google.secretConfigured ? badge(['Siap', 'ok']) : badge(['Belum diisi', 'warn']);
   view.innerHTML = `
     <h1>Pengaturan</h1>
@@ -500,53 +538,16 @@ async function renderSettings(params) {
 
     <form class="card" id="ai-form">
       <h2 style="margin-top:0">Penulis AI ${aiBadge}</h2>
-      <p class="hint">AI menulis setiap artikel dengan narasi berbeda. Tanpa AI, engine memakai template sederhana yang sebaiknya diedit manual.</p>
-      <div class="label">Pilih penulis</div>
+      <p class="hint">Isi satu atau beberapa API key. Jika semua AI gagal, artikel tetap dibuat dengan template agar kampanye tidak berhenti.</p>
+      <div class="label">Cara memakai beberapa AI</div>
       <div class="checklist" style="margin-bottom:16px">
-        <label><input type="radio" name="aiProvider" value="gemini" ${st.aiProvider === 'gemini' ? 'checked' : ''} /> Google Gemini <span class="badge ok" style="margin-left:auto">gratis</span></label>
-        <label><input type="radio" name="aiProvider" value="claude" ${st.aiProvider === 'claude' ? 'checked' : ''} /> Claude <span class="badge warn" style="margin-left:auto">berbayar</span></label>
-        <label><input type="radio" name="aiProvider" value="none" ${st.aiProvider === 'none' ? 'checked' : ''} /> Tanpa AI (template)</label>
+        <label style="align-items:flex-start"><input type="radio" name="aiMode" value="fallback" ${st.aiMode !== 'mix' ? 'checked' : ''} style="margin-top:4px" />
+          <span><strong>Berurutan (cadangan)</strong><br /><span class="hint">Semua artikel ditulis AI nomor 1. Jika gagal (kuota habis, key salah), otomatis pindah ke nomor 2, lalu 3.</span></span></label>
+        <label style="align-items:flex-start"><input type="radio" name="aiMode" value="mix" ${st.aiMode === 'mix' ? 'checked' : ''} style="margin-top:4px" />
+          <span><strong>Bergantian (campur)</strong><br /><span class="hint">Artikel dibagi rata ke semua AI aktif (blog 1 → AI 1, blog 2 → AI 2, …) agar gaya tulisan makin beragam. Cadangan tetap berlaku.</span></span></label>
       </div>
-
-      <div data-provider="gemini">
-        <div class="notice info">
-          <strong>Cara mendapatkan API key Gemini (gratis):</strong>
-          <ol style="margin:6px 0 0 18px;padding:0">
-            <li>Buka <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> dan login dengan akun Google Anda.</li>
-            <li>Klik <em>Create API key</em>, lalu salin key-nya (diawali <code>AIza…</code>) ke kolom di bawah.</li>
-            <li>Jangan aktifkan billing di project tersebut agar tetap di paket gratis.</li>
-          </ol>
-          <p style="margin:8px 0 0">Catatan: langganan Google AI Pro di aplikasi Gemini <strong>tidak</strong> termasuk API, tetapi API punya paket gratis sendiri dengan batas jumlah artikel per menit dan per hari. Di paket gratis, Google dapat memakai isi permintaan untuk meningkatkan produknya.</p>
-        </div>
-        <label>API key Gemini
-          <input name="geminiApiKey" type="password" autocomplete="off" placeholder="${st.gemini.configured ? `${esc(st.gemini.masked)} (kosongkan jika tidak diganti)` : 'AIza…'}" />
-          ${st.gemini.source ? `<small>Tersimpan: ${esc(st.gemini.masked)} · ${SOURCE_LABEL[st.gemini.source]}</small>` : ''}
-        </label>
-        <label>Model Gemini
-          <select name="geminiModel" id="gemini-model"><option value="${esc(st.gemini.model)}">${esc(st.gemini.model)}</option></select>
-          <small>Klik "Tes & muat model" untuk melihat model yang tersedia di akun Anda. Model <em>flash</em> tersedia di paket gratis.</small>
-        </label>
-        <div class="actions">
-          <button type="button" id="test-gemini" ${st.gemini.configured ? '' : 'disabled'}>Tes & muat model</button>
-          ${st.gemini.source === 'dashboard' ? '<button type="button" class="danger" id="clear-gemini">Hapus API key Gemini</button>' : ''}
-        </div>
-      </div>
-
-      <div data-provider="claude">
-        <p class="hint">Claude berbayar per pemakaian (kira-kira beberapa ratus rupiah hingga ribuan rupiah per artikel, tergantung model). API key dibuat di <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
-        <label>API key Claude
-          <input name="anthropicApiKey" type="password" autocomplete="off" placeholder="${st.anthropic.configured ? `${esc(st.anthropic.masked)} (kosongkan jika tidak diganti)` : 'sk-ant-…'}" />
-          ${st.anthropic.source ? `<small>Tersimpan: ${esc(st.anthropic.masked)} · ${SOURCE_LABEL[st.anthropic.source]}</small>` : ''}
-        </label>
-        <label>Model Claude
-          <select name="claudeModel">${st.models.map((m) => `<option value="${m.id}" ${m.id === st.claudeModel ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
-        </label>
-        <div class="actions">
-          <button type="button" id="test-ai" ${st.anthropic.configured ? '' : 'disabled'}>Tes API key Claude</button>
-          ${st.anthropic.source === 'dashboard' ? '<button type="button" class="danger" id="clear-ai">Hapus API key Claude</button>' : ''}
-        </div>
-      </div>
-
+      <div class="label">Urutan prioritas</div>
+      <div id="provider-list">${st.providers.map(providerPanel).join('')}</div>
       <div class="actions" style="margin-top:16px"><button class="primary">Simpan pengaturan AI</button></div>
     </form>
 
@@ -601,52 +602,55 @@ async function renderSettings(params) {
   }));
 
   const aiForm = document.getElementById('ai-form');
-  const showProvider = () => {
-    const chosen = aiForm.querySelector('[name=aiProvider]:checked')?.value;
-    aiForm.querySelectorAll('[data-provider]').forEach((el) => (el.hidden = el.dataset.provider !== chosen));
+  const list = document.getElementById('provider-list');
+  const renumber = () => list.querySelectorAll('.provider .num').forEach((n, i) => (n.textContent = i + 1));
+  list.querySelectorAll('[data-move]').forEach((btn) => (btn.onclick = () => {
+    const panel = btn.closest('.provider');
+    if (btn.dataset.move === '-1' && panel.previousElementSibling) list.insertBefore(panel, panel.previousElementSibling);
+    if (btn.dataset.move === '1' && panel.nextElementSibling) list.insertBefore(panel.nextElementSibling, panel);
+    renumber();
+  }));
+  const KEY_FIELD = { gemini: 'geminiApiKey', claude: 'anthropicApiKey', openai: 'openaiApiKey' };
+  const MODEL_FIELD = { gemini: 'geminiModel', claude: 'claudeModel', openai: 'openaiModel' };
+  const saveAI = async () => {
+    const panels = [...list.querySelectorAll('.provider')];
+    const body = {
+      aiMode: aiForm.querySelector('[name=aiMode]:checked').value,
+      aiOrder: panels.map((el) => el.dataset.id),
+      aiDisabled: panels.filter((el) => !el.querySelector('[name=enabled]').checked).map((el) => el.dataset.id),
+    };
+    for (const el of panels) {
+      body[KEY_FIELD[el.dataset.id]] = el.querySelector('[name=apiKey]').value;
+      body[MODEL_FIELD[el.dataset.id]] = el.querySelector('[name=model]').value;
+    }
+    await api('/api/settings', { method: 'PUT', body });
   };
-  aiForm.querySelectorAll('[name=aiProvider]').forEach((r) => r.addEventListener('change', showProvider));
-  showProvider();
   aiForm.onsubmit = (e) => {
     e.preventDefault();
     withBusy(aiForm.querySelector('button.primary'), async () => {
-      const f = aiForm.elements;
-      await api('/api/settings', {
-        method: 'PUT',
-        body: {
-          aiProvider: aiForm.querySelector('[name=aiProvider]:checked')?.value,
-          geminiApiKey: f.geminiApiKey.value,
-          geminiModel: f.geminiModel.value,
-          anthropicApiKey: f.anthropicApiKey.value,
-          claudeModel: f.claudeModel.value,
-        },
-      });
+      await saveAI();
       toast('Pengaturan AI disimpan');
       await reload();
     });
   };
-  document.getElementById('test-gemini')?.addEventListener('click', (e) => withBusy(e.target, async () => {
-    const r = await api('/api/settings/test-gemini', { method: 'POST' });
-    const select = document.getElementById('gemini-model');
-    select.innerHTML = r.models.map((m) => `<option value="${esc(m.id)}" ${m.id === r.model ? 'selected' : ''}>${esc(m.name)} (${esc(m.id)})</option>`).join('');
+  const TEST_URL = { gemini: '/api/settings/test-gemini', claude: '/api/settings/test-ai', openai: '/api/settings/test-openai' };
+  list.querySelectorAll('[data-test]').forEach((btn) => (btn.onclick = () => withBusy(btn, async () => {
+    await saveAI();
+    const r = await api(TEST_URL[btn.dataset.test], { method: 'POST' });
+    const select = btn.closest('.provider').querySelector('[name=model]');
+    if (r.models) {
+      select.innerHTML = r.models.map((m) => `<option value="${esc(m.id)}" ${m.id === r.model ? 'selected' : ''}>${esc(m.name === m.id ? m.id : `${m.name} (${m.id})`)}</option>`).join('');
+    }
     toast(r.message);
     await refreshStatus();
-  }));
-  document.getElementById('test-ai')?.addEventListener('click', (e) => withBusy(e.target, async () => {
-    toast((await api('/api/settings/test-ai', { method: 'POST' })).message);
-  }));
-  document.getElementById('clear-gemini')?.addEventListener('click', async () => {
-    if (!confirm('Hapus API key Gemini?')) return;
-    await api('/api/settings', { method: 'PUT', body: { clear: ['geminiApiKey'] } });
-    toast('API key Gemini dihapus');
+  })));
+  list.querySelectorAll('[data-clear]').forEach((btn) => (btn.onclick = async () => {
+    const panel = btn.closest('.provider');
+    if (!confirm(`Hapus API key ${panel.querySelector('strong').textContent}?`)) return;
+    await api('/api/settings', { method: 'PUT', body: { clear: [KEY_FIELD[btn.dataset.clear]] } });
+    toast('API key dihapus');
     reload();
-  });
-  document.getElementById('clear-ai')?.addEventListener('click', async () => {
-    if (!confirm('Hapus API key Claude?')) return;
-    await api('/api/settings', { method: 'PUT', body: { clear: ['anthropicApiKey'] } });
-    toast('API key Claude dihapus');
-    reload();
-  });
+  }));
 
   const gForm = document.getElementById('google-form');
   gForm.onsubmit = (e) => {
@@ -682,7 +686,9 @@ async function renderSettings(params) {
 async function refreshStatus() {
   status = await api('/api/status');
   document.getElementById('mode').innerHTML =
-    (status.ai ? `Penulis: <strong>${status.provider === 'gemini' ? 'Gemini' : 'Claude'}</strong> (${esc(status.model)})` : 'Penulis: <a href="#settings"><strong>template</strong> (tanpa AI)</a>') +
+    (status.ai
+      ? `Penulis: <a href="#settings"><strong>${status.writers.map((w) => esc(SHORT_NAME[w.id] || w.name)).join(status.mode === 'mix' ? ' + ' : ' → ')}</strong></a>`
+      : 'Penulis: <a href="#settings"><strong>template</strong> (tanpa AI)</a>') +
     (status.user ? ` · ${esc(status.user)} · <a href="/logout">Keluar</a>` : '');
 }
 
