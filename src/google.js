@@ -44,7 +44,13 @@ async function tokenRequest(body) {
     }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(`Google OAuth: ${data.error_description || data.error || res.status}`);
+  if (!res.ok) {
+    // invalid_grant = izin dicabut atau kedaluwarsa (aplikasi OAuth berstatus "Testing" hanya memberi izin 7 hari).
+    if (data.error === 'invalid_grant') {
+      throw new Error('Izin Google sudah kedaluwarsa atau dicabut. Buka Situs Tujuan → Blogger → Hubungkan akun Google lagi. Agar tidak terulang tiap 7 hari, ubah status aplikasi OAuth ke "In production" (lihat Pengaturan → Blogger).');
+    }
+    throw new Error(`Google OAuth: ${data.error_description || data.error || res.status}`);
+  }
   return data;
 }
 

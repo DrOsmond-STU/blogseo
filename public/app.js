@@ -326,7 +326,11 @@ function openEditor(post, onSaved) {
 async function renderSites(params) {
   const [sites, accounts] = await Promise.all([api('/api/sites'), api('/api/google/accounts')]);
   if (params.get('google') === 'ok') toast('Akun Google terhubung');
-  if (params.get('error')) toast(`Google: ${params.get('error')}`, true);
+  if (params.get('error') === 'access_denied') {
+    toast('Google menolak akses (access_denied). Di Google Cloud Console → Audience, klik "Publish app" atau tambahkan email Anda di Test users, lalu coba lagi. Panduan ada di Pengaturan → Blogger.', true);
+  } else if (params.get('error')) {
+    toast(`Google: ${params.get('error')}`, true);
+  }
   view.innerHTML = `
     <h1>Situs tujuan</h1>
     <p class="sub">Blog dan website tempat artikel akan diposting. Makin beragam platform dan topik blognya, makin alami profil backlink Anda.</p>
@@ -557,11 +561,13 @@ async function renderSettings(params) {
       <ol class="help">
         <li>Buka <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud Console</a> dan buat project baru (misalnya "BlogSEO").</li>
         <li>Aktifkan <a href="https://console.cloud.google.com/apis/library/blogger.googleapis.com" target="_blank" rel="noopener">Blogger API v3</a> untuk project tersebut (klik <em>Enable</em>).</li>
-        <li>Buka <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener">OAuth consent screen</a>: pilih <em>External</em>, isi nama aplikasi & email, lalu di bagian <em>Test users</em> tambahkan email Google pemilik blog.</li>
+        <li>Buka <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth Platform</a> (dulu bernama <em>OAuth consent screen</em>): pilih <em>External</em>, isi nama aplikasi & email.</li>
+        <li>Buka menu <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">Audience</a> lalu klik <strong>Publish app</strong> → <em>Confirm</em> agar statusnya <strong>In production</strong>. Jika tetap <em>Testing</em>, hanya email yang didaftarkan di <em>Test users</em> yang bisa login (selain itu muncul <em>Error 403: access_denied</em>), dan izinnya kedaluwarsa setiap 7 hari.</li>
         <li>Buka <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Credentials</a> → <em>Create credentials</em> → <em>OAuth client ID</em> → tipe <em>Web application</em>.</li>
         <li>Di <em>Authorized JavaScript origins</em> isi:<br /><code>${esc(st.publicBaseUrl)}</code> ${copyButton(st.publicBaseUrl)}</li>
         <li>Di <em>Authorized redirect URIs</em> isi:<br /><code>${esc(st.redirectUri)}</code> ${copyButton(st.redirectUri)}</li>
         <li>Klik <em>Create</em>, lalu salin <strong>Client ID</strong> dan <strong>Client Secret</strong> ke kolom di bawah.</li>
+        <li>Saat menghubungkan akun, Google akan menampilkan <em>"Google hasn't verified this app"</em> karena aplikasi ini hanya untuk Anda sendiri. Klik <em>Advanced</em> → <em>Go to … (unsafe)</em> → <em>Continue</em>. Ini aman karena aplikasinya milik Anda.</li>
       </ol>
       <label>Client ID
         <input name="googleClientId" value="${esc(st.google.clientId)}" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off" />
