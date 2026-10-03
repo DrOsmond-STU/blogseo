@@ -99,7 +99,11 @@ export async function tick() {
     const due = db
       .find('posts', (p) => p.status === 'scheduled' && new Date(p.scheduledAt).getTime() <= now)
       .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-    for (const post of due) {
+    for (const queued of due) {
+      // Status bisa berubah selama antrean memproses artikel lain (mis. "Terbitkan sekarang"
+      // atau kampanye dihapus), jadi periksa ulang agar tidak terbit dua kali.
+      const post = db.get('posts', queued.id);
+      if (!post || post.status !== 'scheduled') continue;
       db.update('posts', post.id, { status: 'publishing' });
       try {
         const { url, remoteId, warnings } = await publishPost(post);

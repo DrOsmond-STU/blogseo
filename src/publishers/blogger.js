@@ -2,7 +2,8 @@
 import { db } from '../db.js';
 import { getAccessToken } from '../google.js';
 
-const API = 'https://www.googleapis.com/blogger/v3';
+// Alamat bisa diganti lewat env hanya untuk pengujian dengan server tiruan.
+const API = process.env.BLOGGER_API_URL || 'https://www.googleapis.com/blogger/v3';
 
 async function bloggerFetch(account, path, options = {}) {
   const token = await getAccessToken(account);

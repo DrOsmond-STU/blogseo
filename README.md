@@ -76,6 +76,10 @@ Tidak ada alat yang bisa menjamin peringkat 1. Engine ini membantu distribusi ko
 - Backlink paling berpengaruh tetap dari situs pihak lain yang relevan: media, direktori bisnis lokal, Google Business Profile, kerja sama, guest post. Pakai `rel="sponsored"` untuk link berbayar.
 - Daftarkan situs utama dan semua blog di Google Search Console, lalu kirim sitemap.
 
+## Pengujian
+
+`npm test` menjalankan unit test dan uji menyeluruh (`test/e2e.test.js`): server sungguhan dijalankan dengan semua layanan luar (Google OAuth, Blogger, WordPress, webhook, Gemini) diganti server tiruan, lalu seluruh alur diuji dari login, pengaturan, menghubungkan akun Google, menambah situs, membuat kampanye dengan gambar, edit/tulis ulang/lewati, penjadwalan & publikasi, sampai ganti password, restart, dan logout.
+
 ## Struktur kode
 
 ```

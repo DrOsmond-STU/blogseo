@@ -2,8 +2,9 @@
 import crypto from 'node:crypto';
 import { config } from './config.js';
 
-const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+// Alamat bisa diganti lewat env hanya untuk pengujian dengan server tiruan.
+const AUTH_URL = process.env.GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth';
+const TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token';
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/blogger'];
 
 export function redirectUri() {
